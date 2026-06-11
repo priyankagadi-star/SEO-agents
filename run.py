@@ -70,9 +70,56 @@ def cmd_audit(args) -> int:
     return 0
 
 
+def write_run_artifacts(run_dir: Path, result: dict) -> None:
+    """Persist ledger, package, runlog, and a final state snapshot."""
+    (run_dir / "ledger.json").write_text(json.dumps(result.get("facts_ledger", []), indent=2))
+    package = result.get("package_out", {})
+    (run_dir / "package_out.json").write_text(json.dumps(package, indent=2))
+    (run_dir / "package_out.md").write_text(_package_md(package))
+    (run_dir / "runlog.md").write_text(_runlog_md(result.get("_runlog", []), result))
+    snapshot = {k: v for k, v in result.items() if k != "_runlog"}
+    (run_dir / "state.json").write_text(json.dumps(snapshot, indent=2, default=str))
+
+
+def _package_md(p: dict) -> str:
+    lines = ["# Content Package", ""]
+    lines += ["## Title variants"] + [f"- {t}" for t in p.get("title_variants", [])]
+    lines += ["", f"**Meta:** {p.get('meta', '')}", "", "## Copy", "", p.get("full_copy", ""), ""]
+    if p.get("internal_links"):
+        lines += ["## Internal links"] + [f"- {l}" for l in p["internal_links"]]
+    if p.get("human_checkpoints") or p.get("unresolved_verify"):
+        lines += ["", "## Unresolved human checkpoints"]
+        lines += [f"- {h}" for h in p.get("human_checkpoints", [])]
+        lines += [f"- (VERIFY) {v}" for v in p.get("unresolved_verify", [])]
+    return "\n".join(lines) + "\n"
+
+
+def _runlog_md(runlog: list, result: dict) -> str:
+    lines = ["# Run log", "", f"Route-back counts: {result.get('route_back_count', {})}", ""]
+    for e in runlog:
+        lines.append(f"## {e['node']}")
+        lines.append(f"- output keys: {', '.join(e.get('output_keys', [])) or '(none)'}")
+        for g in e.get("guardrails", []):
+            lines.append(f"- guardrail: {g}")
+        lines.append("")
+    return "\n".join(lines) + "\n"
+
+
 def cmd_content(args) -> int:
+    from langgraph.checkpoint.memory import MemorySaver
+
     from graphs.content_graph import build_content_graph
-    from state import new_content_state, validate_diagnosis
+    from state import (
+        EscalateToHuman,
+        HumanInputRequired,
+        new_content_state,
+        validate_diagnosis,
+    )
+
+    if getattr(args, "fake", False):
+        from fakes import ScriptedLLM, make_rebuild_script
+        from llm import set_client
+        set_client(ScriptedLLM(make_rebuild_script()))
 
     run_dir = new_run_dir(args.out)
     if args.mode == "net_new":
@@ -106,16 +153,22 @@ def cmd_content(args) -> int:
             keep_list=diagnosis["keep_list"],
             failure_modes=[d["description"] for d in diagnosis["defects"]],
         )
+    graph = build_content_graph(checkpointer=MemorySaver())
+    config = {"configurable": {"thread_id": run_dir.name}, "recursion_limit": 100}
     try:
-        graph = build_content_graph()
-    except NotImplementedError as e:
-        console.print(f"[yellow]{e}[/yellow]")
-        console.print("[yellow]Content walking skeleton lands in Phase 1 (see BUILD-SPEC §11 / CLAUDE.md phase status).[/yellow]")
+        result = graph.invoke(state, config=config)
+    except HumanInputRequired as e:
+        console.print(f"[yellow]HALT — human input required: {e}[/yellow]")
         return 1
-    result = graph.invoke(state)
-    (run_dir / "ledger.json").write_text(json.dumps(result.get("facts_ledger", []), indent=2))
-    (run_dir / "package_out.json").write_text(json.dumps(result.get("package_out", {}), indent=2))
-    console.print(f"[green]content run complete → {run_dir}[/green]")
+    except EscalateToHuman as e:
+        console.print(f"[red]Escalated to human: {e}[/red]")
+        snapshot = graph.get_state(config).values
+        write_run_artifacts(run_dir, snapshot)
+        console.print(f"[yellow]partial artifacts → {run_dir}[/yellow]")
+        return 1
+    write_run_artifacts(run_dir, result)
+    verdict = (result.get("critic_report") or {}).get("verdict", "?")
+    console.print(f"[green]content run complete (critic: {verdict}) → {run_dir}[/green]")
     return 0
 
 
@@ -140,6 +193,8 @@ def main(argv=None) -> int:
     p_content.add_argument("--diagnosis")
     p_content.add_argument("--inputs")
     p_content.add_argument("--out")
+    p_content.add_argument("--fake", action="store_true",
+                           help="run with the offline scripted LLM (no API key needed)")
     p_content.set_defaults(fn=cmd_content)
 
     p_eval = sub.add_parser("eval", help="GO/KILL eval gate (rubric + seeded errors)")

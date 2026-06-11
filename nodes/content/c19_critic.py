@@ -1,0 +1,65 @@
+"""c19_critic (L6): adversarial critic, deterministic-first.
+
+Runs fact_diff / quantifier_check / flag_dont_fill on the merged draft, checks
+keep_list survival and unresolved [VERIFY], and names the owning step for each
+failure. Any blocker ⇒ verdict "fail" (which routes back to the owning layer).
+LLM-assisted nuance checks are layered on in later phases; the deterministic
+guardrails are authoritative — they are the product.
+"""
+from __future__ import annotations
+
+from guardrails import (
+    VERIFY_PAT,
+    fact_diff,
+    flag_dont_fill,
+    quantifier_check,
+)
+from ledger import FactsLedger
+
+
+def run(state: dict) -> dict:
+    led = FactsLedger(list(state.get("facts_ledger", [])))
+    draft = state.get("draft", "")
+    failures: list[dict] = []
+
+    for v in fact_diff(draft, led):
+        failures.append({"description": v.detail, "owning_step": "c11_section_drafter",
+                         "severity": "blocker", "evidence": v.detail,
+                         "fix": "Correct the contradicted value to match the locked ledger fact."})
+    for v in flag_dont_fill(draft, led):
+        failures.append({"description": v.detail, "owning_step": "c11_section_drafter",
+                         "severity": "blocker", "evidence": v.detail,
+                         "fix": "Cite a (fact:id) or mark the number as [VERIFY: …]."})
+    for v in quantifier_check(draft, led):
+        failures.append({"description": v.detail, "owning_step": "c11_section_drafter",
+                         "severity": v.severity, "evidence": v.detail,
+                         "fix": "Ground the quantifier in a verified fact or soften it."})
+
+    # keep_list survival (dropping a kept strength is the classic rebuild failure)
+    for item in state.get("keep_list") or []:
+        token = str(item).split(" differentiator")[0].strip()
+        if token and token.lower() not in draft.lower():
+            failures.append({"description": f"keep_list item missing from draft: {item}",
+                             "owning_step": "c9_outline", "severity": "blocker", "evidence": item,
+                             "fix": "Assign this kept strength to a section and cover it."})
+
+    # entity coverage from the gap matrix (reported as major in Phase 1)
+    gap = state.get("gap_entity_matrix") or {}
+    for entity in gap.get("missing_entities", []):
+        if str(entity).lower() not in draft.lower():
+            failures.append({"description": f"gap entity not covered: {entity}",
+                             "owning_step": "c9_outline", "severity": "major", "evidence": entity,
+                             "fix": "Add a section/passage covering this entity."})
+
+    # unresolved evidence flags must not ship
+    for flag in VERIFY_PAT.findall(draft):
+        failures.append({"description": f"unresolved evidence flag in draft: {flag}",
+                         "owning_step": "c13_evidence", "severity": "blocker", "evidence": flag,
+                         "fix": "Resolve or cut the flagged claim before publishing."})
+
+    blockers = [f for f in failures if f["severity"] == "blocker"]
+    verdict = "fail" if blockers else "pass"
+    return {
+        "critic_report": {"verdict": verdict, "failures": failures, "blocker_count": len(blockers)},
+        "_guardrails": [{"check": "critic", "verdict": verdict, "failures": len(failures)}],
+    }

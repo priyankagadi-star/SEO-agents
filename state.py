@@ -113,11 +113,19 @@ class ContentState(TypedDict):
     a11y_perf_budget: NotRequired[dict]
     # ---- working artifacts ----
     outline: NotRequired[dict]
+    lead: NotRequired[str]                        # answer-first lead from c10
+    strategy: NotRequired[dict]                   # from c7
     sections: NotRequired[dict[str, str]]
     faq: NotRequired[list[dict]]
     draft: NotRequired[str]
     schema_jsonld: NotRequired[dict]
     package_out: NotRequired[dict]
+    canonical_source_texts: NotRequired[dict]     # url -> text, when provided/fetched
+    # ---- internal bookkeeping (graph channels; prefixed to stay out of package) ----
+    _runlog: NotRequired[list]
+    _guardrails: NotRequired[list]
+    _c7: NotRequired[dict]
+    _c13_verdicts: NotRequired[list]
     # ---- quality spine ----
     facts_ledger: list[Fact]                      # append-only; only ledger.py mutates
     verify_list: list[str]

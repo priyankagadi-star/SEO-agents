@@ -1,0 +1,63 @@
+{
+  "url": "https://siftly.ai/chatgpt-visibility",
+  "page_type": "feature",
+  "primary_query": "chatgpt visibility tracking",
+  "scorecard": {
+    "technical": 2,
+    "onpage": 1,
+    "content": 1,
+    "geo": 1,
+    "eeat": 1,
+    "ux": 2,
+    "a11y_perf": 2,
+    "analytics": 1
+  },
+  "defects": [
+    {
+      "description": "Lead does not answer the query in the first ~60 words",
+      "owning_step": "c10_hook",
+      "severity": "major",
+      "fix": "Rewrite the opening as an answer-first lead of 40-60 words."
+    },
+    {
+      "description": "Engine coverage is asserted vaguely ('multiple engines') instead of the exact, verifiable count",
+      "owning_step": "c11_section_drafter",
+      "severity": "blocker",
+      "fix": "State the verified engine count and name each engine, citing the ledger fact."
+    },
+    {
+      "description": "No FAQ block, so the page misses PAA and AI-citation opportunities",
+      "owning_step": "c12_faq",
+      "severity": "major",
+      "fix": "Add at least five PAA-sourced FAQs with answer-first responses."
+    },
+    {
+      "description": "No FAQPage schema present",
+      "owning_step": "c18_schema",
+      "severity": "major",
+      "fix": "Emit a JSON-LD @graph including a FAQPage whose text matches the visible FAQ."
+    }
+  ],
+  "gap_entity_matrix": {
+    "missing_entities": ["AI Overview citation share"],
+    "missing_subtopics": ["how sampling reduces variance"],
+    "competitor_advantages": ["competitors publish a methodology section"]
+  },
+  "performance": {
+    "impressions": 18400,
+    "clicks": 12,
+    "ctr": 0.0007,
+    "position": 6.2,
+    "striking_distance_queries": ["chatgpt brand monitoring", "ai answer tracking"],
+    "aio_zero_click_share": 0.74
+  },
+  "root_causes": [
+    "Page describes the feature but never quantifies coverage with verifiable facts",
+    "No answer-first lead, so AI engines cannot extract a clean citable claim",
+    "Missing FAQ/schema reduces eligibility for AI-Overview citations"
+  ],
+  "keep_list": [
+    "Sample Variance differentiator"
+  ],
+  "_provenance": "HAND-AUTHORED Phase-1 stand-in. BUILD-SPEC §11 says derive from page-runs/02-chatgpt-visibility.md, which is NOT present in the repo. Replace with the real diagnosis when the owner supplies that file. [VERIFY-WITH-OWNER]"
+}

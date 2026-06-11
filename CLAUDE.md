@@ -10,7 +10,7 @@ the design rationale.
 | Phase | Scope | Status |
 |---|---|---|
 | 0 | skeleton & contracts: state.py, ledger.py, guardrails.py, tests, config, prompt loader, graph topology | ✅ done — `pytest` green, `import graphs.content_graph` ok |
-| 1 | content walking skeleton (rebuild, nodes c0,c1,c7–c13,c16,c18,c19,c22, route-back, in-memory checkpointer) | ⬜ next |
+| 1 | content walking skeleton (rebuild, nodes c0,c1,c7–c13,c16,c18,c19,c22, route-back, in-memory checkpointer) | ✅ done — 43 tests green; mocked-LLM route-back blocks→re-drafts→passes, escalates at cap; `run.py content --mode rebuild … --fake` produces a full `runs/<ts>/` |
 | 2 | GO/KILL eval gate (rubric ≥85% vs gold, seeds 6/6) | ⬜ blocked on gold files (below) |
 | 3 | audit pipeline a0–a11 + the diagnosis seam, SQLite checkpointer | ⬜ |
 | 4 | cold mode + remaining agents (c2–c6, c14, c15, c17, c20, c21) | ⬜ |
@@ -47,6 +47,18 @@ python run.py content --mode rebuild --diagnosis runs/<ts>/diagnosis.json --inpu
 python run.py content --mode net_new --inputs inputs.json                                        # Phase 4+
 python run.py eval                       # Phase 2 gate; exit 0 = GO
 ```
+
+### Offline demo (no API key)
+```
+python run.py content --mode rebuild \
+  --diagnosis eval/fixtures/diagnosis-chatgpt-visibility.json \
+  --inputs eval/fixtures/inputs-rebuild.json --fake
+```
+`--fake` swaps in `fakes.ScriptedLLM`; the scripted drafter emits "nine AI
+engines" on its first pass so you can watch c19 block on `fact_diff`, route back
+to L3, and pass on the corrected re-draft. A real run needs `ANTHROPIC_API_KEY`
+(omit `--fake`). The hand-authored diagnosis fixture is a stand-in — see the
+missing-assets note below.
 
 ## Layout note
 The BUILD-SPEC names the root `seo-geo-platform/`; in this repo the platform
