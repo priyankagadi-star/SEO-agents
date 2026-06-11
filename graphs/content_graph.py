@@ -1,0 +1,147 @@
+"""Pipeline B wiring — content generation graph (BUILD-SPEC §5b).
+
+Topology (declared as data so tests and docs can't drift from the wiring):
+c0 → [c1, c2, (c3→c4→c5), c6 parallel] → c7 → c8 → c9
+   → [c10, c11×N fan-out, c12 parallel] → [c13, c14, c15 parallel]
+   → c16 → [c17, c18 parallel] → [c19, c20, (c21 rebuild) parallel] → gate → c22
+
+Phase 0 ships the topology, layer map and route-back mechanism; node modules
+are added in Phases 1/4 and the builder wires whatever the phase requires.
+"""
+from __future__ import annotations
+
+import importlib
+from typing import Callable
+
+from state import ContentState, EscalateToHuman, validate_state
+
+# node id -> layer (BUILD-SPEC §5b)
+NODE_LAYER: dict[str, str] = {
+    "c0_intake_router": "L0",
+    "c1_source_reconciler": "L0",
+    "c2_cannibalization": "L0",
+    "c3_kw_intent_mapper": "L0",
+    "c4_serp_landscape": "L0",
+    "c5_competitor_content": "L0",
+    "c6_brand_loader": "L0",
+    "c7_strategist": "L1",
+    "c8_brief_compiler": "L1",
+    "c9_outline": "L2",
+    "c10_hook": "L3",
+    "c11_section_drafter": "L3",
+    "c12_faq": "L3",
+    "c13_evidence": "L4",
+    "c14_eeat": "L4",
+    "c15_media": "L4",
+    "c16_editorial": "L5",
+    "c17_a11y_perf": "L5",
+    "c18_schema": "L5",
+    "c19_critic": "L6",
+    "c20_render_critic": "L6",
+    "c21_comparison_judge": "L6",
+    "c22_packager": "L7",
+}
+
+# layer -> entry node to route back to when a critic failure is owned by that layer
+LAYER_ENTRY: dict[str, str] = {
+    "L0": "c1_source_reconciler",
+    "L1": "c7_strategist",
+    "L2": "c9_outline",
+    "L3": "c10_hook",
+    "L4": "c13_evidence",
+    "L5": "c16_editorial",
+}
+
+# Phase 1 walking-skeleton roster (BUILD-SPEC §11 Phase 1)
+PHASE1_NODES = [
+    "c0_intake_router", "c1_source_reconciler", "c7_strategist",
+    "c8_brief_compiler", "c9_outline", "c10_hook", "c11_section_drafter",
+    "c12_faq", "c13_evidence", "c16_editorial", "c18_schema",
+    "c19_critic", "c22_packager",
+]
+
+
+def owning_layer(node_id: str) -> str:
+    """Layer that owns a node; KeyError on unknown node ids (fail loud)."""
+    return NODE_LAYER[node_id]
+
+
+def apply_route_back(state: ContentState, layer: str, cap: int) -> ContentState:
+    """Record a critic-triggered route-back to `layer`.
+
+    Increments route_back_count[layer]; once the count would exceed `cap`,
+    raises EscalateToHuman instead of looping again.
+    """
+    counts = state.setdefault("route_back_count", {})
+    next_count = counts.get(layer, 0) + 1
+    if next_count > cap:
+        raise EscalateToHuman(layer, next_count, cap, failures=(state.get("critic_report") or {}).get("failures"))
+    counts[layer] = next_count
+    return state
+
+
+def _load_node(node_id: str) -> Callable[[dict], dict]:
+    module = importlib.import_module(f"nodes.content.{node_id}")
+    return module.run
+
+
+def _validated(node_id: str, fn: Callable[[dict], dict]) -> Callable[[dict], dict]:
+    def wrapped(state: dict) -> dict:
+        update = fn(state)
+        validate_state({**state, **update}, after_node=node_id)
+        return update
+    wrapped.__name__ = node_id
+    return wrapped
+
+
+def build_content_graph(checkpointer=None, nodes: list[str] | None = None):
+    """Build the LangGraph StateGraph for Pipeline B.
+
+    `nodes` defaults to the Phase 1 walking skeleton. Raises NotImplementedError
+    listing any node modules that don't exist yet — never wires a silent no-op.
+    """
+    from langgraph.graph import END, START, StateGraph
+
+    roster = nodes or PHASE1_NODES
+    missing = []
+    impls: dict[str, Callable] = {}
+    for node_id in roster:
+        try:
+            impls[node_id] = _validated(node_id, _load_node(node_id))
+        except ModuleNotFoundError:
+            missing.append(node_id)
+    if missing:
+        raise NotImplementedError(
+            f"Content nodes not yet implemented (build them in their phase): {missing}"
+        )
+
+    g = StateGraph(ContentState)
+    for node_id, fn in impls.items():
+        g.add_node(node_id, fn)
+
+    # Phase 1 linear-with-gates wiring; parallel fan-outs land with their phases.
+    order = [n for n in PHASE1_NODES if n in impls]
+    g.add_edge(START, order[0])
+    for a, b in zip(order, order[1:]):
+        if a == "c19_critic":
+            continue  # critic exit is conditional (gate)
+        g.add_edge(a, b)
+
+    if "c19_critic" in impls:
+        def critic_gate(state: dict) -> str:
+            report = state.get("critic_report") or {}
+            if report.get("verdict") == "pass":
+                return "c22_packager"
+            failures = report.get("failures") or []
+            owner = failures[0]["owning_step"] if failures else "c11_section_drafter"
+            layer = owning_layer(owner)
+            import yaml
+            from pathlib import Path
+            cap = yaml.safe_load((Path(__file__).parent.parent / "config.yaml").read_text())["route_back_cap"]
+            apply_route_back(state, layer, cap)
+            return LAYER_ENTRY[layer]
+
+        g.add_conditional_edges("c19_critic", critic_gate)
+    g.add_edge("c22_packager", END)
+
+    return g.compile(checkpointer=checkpointer)
