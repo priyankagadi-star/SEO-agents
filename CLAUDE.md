@@ -13,7 +13,7 @@ the design rationale.
 | 1 | content walking skeleton (rebuild, nodes c0,c1,c7–c13,c16,c18,c19,c22, route-back, in-memory checkpointer) | ✅ done — 43 tests green; mocked-LLM route-back blocks→re-drafts→passes, escalates at cap; `run.py content --mode rebuild … --fake` produces a full `runs/<ts>/` |
 | 2 | GO/KILL eval gate (rubric ≥85% vs gold, seeds 6/6) | ⬜ blocked on gold files (below) |
 | 3 | audit pipeline a0–a11 + the diagnosis seam, SQLite checkpointer | ✅ done — 58 tests green; live-URL audit → diagnosis.json → rebuild chains with no hand edits; a5/a6 degrade honestly (stub / not-assessed); AIO zero-click rule wired a10→root_causes. Audit nodes are deterministic heuristics; LLM enrichment (a3 info-gain hypotheses, a11 prose) deliberately deferred |
-| 4 | cold mode + remaining agents (c2–c6, c14, c15, c17, c20, c21) | ⬜ |
+| 4 | cold mode + remaining agents (c2–c6, c14, c15, c17, c20, c21) | ✅ done — 71 tests green; `content --mode net_new --inputs … --fake` runs from a seed keyword with no live page; c21 skipped in cold mode; volumes never fabricated (stub SERP honest); permission:false testimonials structurally excluded; L6 gate combines c19+c20+c21 |
 | 5 | hardening: cost/latency, retries, --resume, README | ⬜ |
 | W | multi-domain workspace layer (`workspaces.py`, `run.py account`, `--account`) | ✅ done — per-domain config/runs/GSC isolation; `gsc.mode: api` reserved for OAuth upgrade |
 

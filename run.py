@@ -142,9 +142,10 @@ def cmd_content(args) -> int:
     )
 
     if getattr(args, "fake", False):
-        from fakes import ScriptedLLM, make_rebuild_script
+        from fakes import ScriptedLLM, make_cold_script, make_rebuild_script
         from llm import set_client
-        set_client(ScriptedLLM(make_rebuild_script()))
+        script = make_cold_script() if args.mode == "net_new" else make_rebuild_script()
+        set_client(ScriptedLLM(script))
 
     account = load_account_or_exit(args.account) if args.account else None
     acct = account.content_inputs() if account else {}
@@ -153,11 +154,13 @@ def cmd_content(args) -> int:
         # account config can satisfy fields so inputs.json may carry only the rest
         required = [f for f in NET_NEW_REQUIRED if f not in ("canonical_sources", "brand_assets", "audience") or not acct.get(f)]
         inputs = load_inputs(args.inputs, required)
+        dossier = inputs.get("research_dossier", {})
+        dossier.setdefault("business_context", inputs.get("business_context", ""))
         state = new_content_state(
             mode="net_new",
             page_type=inputs["page_type"],
             primary_keyword=inputs["seed_keyword"],
-            research_dossier=inputs.get("research_dossier", {}),
+            research_dossier=dossier,
             brand_assets=inputs.get("brand_assets") or acct.get("brand_assets", {}),
             audience=inputs.get("audience") or acct.get("audience", ""),
             canonical_sources=inputs.get("canonical_sources") or acct.get("canonical_sources", []),
@@ -190,6 +193,8 @@ def cmd_content(args) -> int:
         )
     if acct.get("source_precedence"):
         state["source_precedence"] = acct["source_precedence"]
+    if account and account.sitemap:
+        state["sitemap"] = account.sitemap
     graph = build_content_graph(checkpointer=sqlite_checkpointer(run_dir))
     config = {"configurable": {"thread_id": run_dir.name}, "recursion_limit": 100}
     try:

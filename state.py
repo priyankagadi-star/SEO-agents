@@ -121,11 +121,19 @@ class ContentState(TypedDict):
     schema_jsonld: NotRequired[dict]
     package_out: NotRequired[dict]
     canonical_source_texts: NotRequired[dict]     # url -> text, when provided/fetched
+    sitemap: NotRequired[str]                     # account-configured sitemap URL (c2)
+    media_manifest: NotRequired[list[dict]]       # from c15
+    svg_assets: NotRequired[dict]                 # filename -> svg markup (c15)
+    render_report: NotRequired[dict]              # from c20
+    comparison_report: NotRequired[dict]          # from c21 (rebuild only)
     # ---- internal bookkeeping (graph channels; prefixed to stay out of package) ----
     _runlog: NotRequired[list]
     _guardrails: NotRequired[list]
+    _c6: NotRequired[dict]
     _c7: NotRequired[dict]
     _c13_verdicts: NotRequired[list]
+    _eeat: NotRequired[dict]
+    _a11y_violations: NotRequired[list]
     # ---- quality spine ----
     facts_ledger: list[Fact]                      # append-only; only ledger.py mutates
     verify_list: list[str]

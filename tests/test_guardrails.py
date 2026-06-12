@@ -12,7 +12,7 @@ from guardrails import (
 )
 from ledger import FactsLedger
 
-ENGINES_PATTERN = r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:major\s+)?AI engines"
+ENGINES_PATTERN = r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s+(?:major\s+)?AI engines"
 WAU_PATTERN = r"(\d[\d,.]*\s*(?:million|billion))\s+weekly"
 
 
@@ -56,6 +56,13 @@ def test_fact_diff_catches_nine_engines():
 def test_fact_diff_passes_correct_engine_count():
     led = ledger_with_engines_4()
     draft = "Siftly tracks your brand across 4 AI engines (fact:engines-count)."
+    assert fact_diff(draft, led) == []
+
+
+def test_fact_diff_no_false_positive_inside_words():
+    """Regression: '(of)ten AI engines' must not match as 'ten AI engines'."""
+    led = ledger_with_engines_4()
+    draft = "Measure how often AI engines cite your brand across 4 AI engines (fact:engines-count)."
     assert fact_diff(draft, led) == []
 
 

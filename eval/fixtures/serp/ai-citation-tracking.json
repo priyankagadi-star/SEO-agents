@@ -1,0 +1,15 @@
+{
+  "organic": [
+    {"title": "AI Citation Tracking: The Complete Guide for Brands", "url": "https://competitor-one.example/ai-citation-tracking-guide", "snippet": "Learn how to track when AI engines cite your brand."},
+    {"title": "Top 7 Best AI Citation Tracking Tools Compared", "url": "https://competitor-two.example/best-ai-citation-tools", "snippet": "We compared the leading tools for monitoring AI citations."},
+    {"title": "How to Measure Brand Mentions in ChatGPT and Perplexity", "url": "https://competitor-three.example/measure-brand-mentions", "snippet": "A methodology for sampling prompts and counting citations."},
+    {"title": "What is Generative Engine Optimization (GEO)?", "url": "https://competitor-four.example/what-is-geo", "snippet": "GEO explained: optimizing for AI answers instead of links."}
+  ],
+  "paa": [
+    "What is AI citation tracking?",
+    "How do I know if ChatGPT recommends my brand?",
+    "What is a good AI citation share?",
+    "How often should I measure AI visibility?",
+    "Can you track citations in Google AI Overviews?"
+  ]
+}

@@ -35,8 +35,9 @@ class ScriptedLLM:
         return text, {"model": f"scripted-{tier}", "input_tokens": 0, "output_tokens": 0}
 
 
+# \b anchor matters: without it "o(ften) AI engines" matches as "ten AI engines"
 _ENGINES_PATTERN = (
-    r"(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)"
+    r"\b(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten)"
     r"\s+(?:major\s+)?AI engines"
 )
 
@@ -131,8 +132,15 @@ def make_rebuild_script(poison_first_pass: bool = True, poison_always: bool = Fa
             "verify_flags": [],
         })
 
+    c6 = json.dumps({
+        "brand_voice": {"tone": "direct, evidence-first", "person": "second",
+                        "words_to_avoid": ["revolutionary", "game-changing"]},
+        "human_checkpoints": [],
+    })
+
     return {
         "c1_source_reconciler": c1,
+        "c6_brand_loader": c6,
         "c7_strategist": c7,
         "c8_brief_compiler": c8,
         "c9_outline": c9,
@@ -140,3 +148,26 @@ def make_rebuild_script(poison_first_pass: bool = True, poison_always: bool = Fa
         "c11_section_drafter": c11,
         "c12_faq": c12,
     }
+
+
+def make_cold_script(keyword: str = "ai citation tracking") -> dict:
+    """Coherent net_new run: same quality spine, no diagnosis/keep-list inputs.
+    Cold-only research nodes (c2-c5) are deterministic and need no script."""
+    script = make_rebuild_script(poison_first_pass=False)
+    script["c7_strategist"] = json.dumps({
+        "unique_insight": f"Siftly turns {keyword} into a weekly citation-share metric "
+                          "across 4 AI engines with Sample Variance analysis (fact:engines-count).",
+        "strategy": {"reader": "B2B SEO leads", "promise": f"Measure {keyword} properly",
+                     "proof_order": ["coverage", "variance", "citations"]},
+        "keep_plan": [],
+        "link_outs": [],
+        "claims": ["Siftly monitors 4 AI engines (fact:engines-count)."],
+    })
+    script["c10_hook"] = json.dumps({
+        "lead": ("AI citation tracking measures how often AI engines cite your brand when "
+                 "buyers ask questions. Siftly samples hundreds of prompt phrasings across "
+                 "4 AI engines (fact:engines-count), applies Sample Variance analysis, and "
+                 "reports a weekly citation-share score your team can actually improve."),
+        "word_count": 47,
+    })
+    return script

@@ -1,0 +1,15 @@
+{
+  "seed_keyword": "ai citation tracking",
+  "business_context": "Siftly is a B2B SaaS platform that measures brand visibility across AI engines (ChatGPT, Claude, Perplexity, Google AI Overviews) using prompt sampling and Sample Variance analysis.",
+  "page_type": "guide",
+  "audience": "B2B SEO and content leads evaluating AI-visibility tooling",
+  "canonical_sources": ["https://siftly.ai/features"],
+  "brand_assets": {
+    "differentiators": ["Sample Variance analysis", "four-engine coverage"],
+    "author": {"name": "A. Lee", "credentials": "Head of SEO, Siftly"},
+    "testimonials": [
+      {"quote": "Siftly doubled our AI citations in a quarter", "author": "J. Doe", "permission": false}
+    ],
+    "screenshots": []
+  }
+}

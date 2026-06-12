@@ -60,6 +60,20 @@ PHASE1_NODES = [
     "c19_critic", "c22_packager",
 ]
 
+# Full roster (Phase 4): execution order follows the layer sequence.
+# Cold-only nodes (c3-c5) and rebuild-only nodes (c21) self-gate on state["mode"].
+ALL_NODES = [
+    "c0_intake_router", "c1_source_reconciler", "c2_cannibalization",
+    "c3_kw_intent_mapper", "c4_serp_landscape", "c5_competitor_content",
+    "c6_brand_loader",
+    "c7_strategist", "c8_brief_compiler", "c9_outline",
+    "c10_hook", "c11_section_drafter", "c12_faq",
+    "c13_evidence", "c14_eeat", "c15_media",
+    "c16_editorial", "c17_a11y_perf", "c18_schema",
+    "c19_critic", "c20_render_critic", "c21_comparison_judge",
+    "c22_packager",
+]
+
 
 def owning_layer(node_id: str) -> str:
     """Layer that owns a node; KeyError on unknown node ids (fail loud)."""
@@ -103,15 +117,37 @@ def _validated(node_id: str, fn: Callable[[dict], dict]) -> Callable[[dict], dic
     return wrapped
 
 
+def _route_back_cap() -> int:
+    import yaml
+    from pathlib import Path
+    return yaml.safe_load((Path(__file__).parent.parent / "config.yaml").read_text())["route_back_cap"]
+
+
+def critic_gate(state: dict) -> str:
+    """L6 gate: combine c19/c20/c21 verdicts. Any blocker failure routes back
+    to the owning layer (capped → EscalateToHuman); otherwise package."""
+    failures: list[dict] = []
+    for key in ("critic_report", "render_report", "comparison_report"):
+        report = state.get(key) or {}
+        if report.get("verdict") == "fail":
+            failures += [f for f in report.get("failures", [])
+                         if f.get("severity") == "blocker"]
+    if not failures:
+        return "c22_packager"
+    layer = owning_layer(failures[0]["owning_step"])
+    apply_route_back(state, layer, _route_back_cap())
+    return LAYER_ENTRY[layer]
+
+
 def build_content_graph(checkpointer=None, nodes: list[str] | None = None):
     """Build the LangGraph StateGraph for Pipeline B.
 
-    `nodes` defaults to the Phase 1 walking skeleton. Raises NotImplementedError
-    listing any node modules that don't exist yet — never wires a silent no-op.
+    `nodes` defaults to the full roster. Raises NotImplementedError listing any
+    node modules that don't exist yet — never wires a silent no-op.
     """
     from langgraph.graph import END, START, StateGraph
 
-    roster = nodes or PHASE1_NODES
+    roster = nodes or ALL_NODES
     missing = []
     impls: dict[str, Callable] = {}
     for node_id in roster:
@@ -128,29 +164,20 @@ def build_content_graph(checkpointer=None, nodes: list[str] | None = None):
     for node_id, fn in impls.items():
         g.add_node(node_id, fn)
 
-    # Phase 1 linear-with-gates wiring; parallel fan-outs land with their phases.
-    order = [n for n in PHASE1_NODES if n in impls]
+    # Linear-with-gate wiring in layer order; the L6 gate sits after the last
+    # critic in the roster. (True parallel fan-outs are a Phase 5 optimization —
+    # node ownership of disjoint keys already makes them safe.)
+    order = [n for n in roster if n in impls]
+    last_critic = next((n for n in reversed(order)
+                        if n in ("c21_comparison_judge", "c20_render_critic", "c19_critic")),
+                       None)
     g.add_edge(START, order[0])
     for a, b in zip(order, order[1:]):
-        if a == "c19_critic":
-            continue  # critic exit is conditional (gate)
+        if a == last_critic:
+            continue  # gate decides the exit edge
         g.add_edge(a, b)
-
-    if "c19_critic" in impls:
-        def critic_gate(state: dict) -> str:
-            report = state.get("critic_report") or {}
-            if report.get("verdict") == "pass":
-                return "c22_packager"
-            failures = report.get("failures") or []
-            owner = failures[0]["owning_step"] if failures else "c11_section_drafter"
-            layer = owning_layer(owner)
-            import yaml
-            from pathlib import Path
-            cap = yaml.safe_load((Path(__file__).parent.parent / "config.yaml").read_text())["route_back_cap"]
-            apply_route_back(state, layer, cap)
-            return LAYER_ENTRY[layer]
-
-        g.add_conditional_edges("c19_critic", critic_gate)
+    if last_critic:
+        g.add_conditional_edges(last_critic, critic_gate)
     g.add_edge("c22_packager", END)
 
     return g.compile(checkpointer=checkpointer)
