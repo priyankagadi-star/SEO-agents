@@ -15,6 +15,7 @@ the design rationale.
 | 3 | audit pipeline a0–a11 + the diagnosis seam, SQLite checkpointer | ⬜ |
 | 4 | cold mode + remaining agents (c2–c6, c14, c15, c17, c20, c21) | ⬜ |
 | 5 | hardening: cost/latency, retries, --resume, README | ⬜ |
+| W | multi-domain workspace layer (`workspaces.py`, `run.py account`, `--account`) | ✅ done — per-domain config/runs/GSC isolation; `gsc.mode: api` reserved for OAuth upgrade |
 
 ## Missing reference assets — [VERIFY-WITH-OWNER]
 BUILD-SPEC references files that were **not in this repository** at Phase 0.
@@ -46,6 +47,10 @@ python run.py audit  --url https://…     # Phase 3+
 python run.py content --mode rebuild --diagnosis runs/<ts>/diagnosis.json --inputs inputs.json   # Phase 1+
 python run.py content --mode net_new --inputs inputs.json                                        # Phase 4+
 python run.py eval                       # Phase 2 gate; exit 0 = GO
+
+python run.py account add example.com    # scaffold a domain workspace
+python run.py account list|show example.com
+python run.py content --mode rebuild --account example.com --diagnosis …   # account fills inputs
 ```
 
 ### Offline demo (no API key)

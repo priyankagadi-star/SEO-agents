@@ -42,16 +42,31 @@ def load_inputs(path: str, required: list[str]) -> dict:
     return data
 
 
-def new_run_dir(base: str | None = None) -> Path:
+def new_run_dir(base: str | None = None, account=None) -> Path:
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    d = Path(base) if base else Path("runs") / ts
+    if base:
+        d = Path(base)
+    elif account is not None:
+        d = account.runs_dir / ts          # account runs stay inside the workspace
+    else:
+        d = Path("runs") / ts
     d.mkdir(parents=True, exist_ok=True)
     return d
 
 
+def load_account_or_exit(domain: str):
+    from workspaces import WorkspaceError, load_account
+    try:
+        return load_account(domain)
+    except WorkspaceError as e:
+        console.print(f"[red]{e}[/red]")
+        sys.exit(2)
+
+
 def cmd_audit(args) -> int:
     from graphs.audit_graph import build_audit_graph
-    run_dir = new_run_dir(args.out)
+    account = load_account_or_exit(args.account) if args.account else None
+    run_dir = new_run_dir(args.out, account=account)
     try:
         graph = build_audit_graph()
     except NotImplementedError as e:
@@ -59,8 +74,10 @@ def cmd_audit(args) -> int:
         console.print("[yellow]Audit pipeline lands in Phase 3 (see BUILD-SPEC §11 / CLAUDE.md phase status).[/yellow]")
         return 1
     state = {"url": args.url}
-    if args.gsc:
-        state["gsc_path"] = args.gsc
+    # explicit flags override account config; account fills the gaps
+    gsc_path = args.gsc or (str(p) if account and (p := account.latest_gsc_export()) else None)
+    if gsc_path:
+        state["gsc_path"] = gsc_path
     if args.keyword:
         state["primary_query"] = args.keyword
     result = graph.invoke(state)
@@ -121,17 +138,21 @@ def cmd_content(args) -> int:
         from llm import set_client
         set_client(ScriptedLLM(make_rebuild_script()))
 
-    run_dir = new_run_dir(args.out)
+    account = load_account_or_exit(args.account) if args.account else None
+    acct = account.content_inputs() if account else {}
+    run_dir = new_run_dir(args.out, account=account)
     if args.mode == "net_new":
-        inputs = load_inputs(args.inputs, NET_NEW_REQUIRED)
+        # account config can satisfy fields so inputs.json may carry only the rest
+        required = [f for f in NET_NEW_REQUIRED if f not in ("canonical_sources", "brand_assets", "audience") or not acct.get(f)]
+        inputs = load_inputs(args.inputs, required)
         state = new_content_state(
             mode="net_new",
             page_type=inputs["page_type"],
             primary_keyword=inputs["seed_keyword"],
             research_dossier=inputs.get("research_dossier", {}),
-            brand_assets=inputs["brand_assets"],
-            audience=inputs["audience"],
-            canonical_sources=inputs["canonical_sources"],
+            brand_assets=inputs.get("brand_assets") or acct.get("brand_assets", {}),
+            audience=inputs.get("audience") or acct.get("audience", ""),
+            canonical_sources=inputs.get("canonical_sources") or acct.get("canonical_sources", []),
         )
     else:
         if not args.diagnosis:
@@ -139,20 +160,28 @@ def cmd_content(args) -> int:
             return 2
         diagnosis = json.loads(Path(args.diagnosis).read_text())
         validate_diagnosis(diagnosis)
-        inputs = load_inputs(args.inputs, ["canonical_sources", "brand_assets", "audience"]) if args.inputs else {}
+        inputs = {}
+        if args.inputs:
+            required = [] if account else ["canonical_sources", "brand_assets", "audience"]
+            inputs = load_inputs(args.inputs, required)
+        elif not account:
+            console.print("[red]rebuild needs --inputs inputs.json or --account <domain>[/red]")
+            return 2
         state = new_content_state(
             mode="rebuild",
             page_type=diagnosis["page_type"],
             target_url=diagnosis["url"],
             primary_keyword=diagnosis["primary_query"],
             research_dossier=inputs.get("research_dossier", {}),
-            brand_assets=inputs.get("brand_assets", {}),
-            audience=inputs.get("audience", ""),
-            canonical_sources=inputs.get("canonical_sources", []),
+            brand_assets=inputs.get("brand_assets") or acct.get("brand_assets", {}),
+            audience=inputs.get("audience") or acct.get("audience", ""),
+            canonical_sources=inputs.get("canonical_sources") or acct.get("canonical_sources", []),
             gap_entity_matrix=diagnosis["gap_entity_matrix"],
             keep_list=diagnosis["keep_list"],
             failure_modes=[d["description"] for d in diagnosis["defects"]],
         )
+    if acct.get("source_precedence"):
+        state["source_precedence"] = acct["source_precedence"]
     graph = build_content_graph(checkpointer=MemorySaver())
     config = {"configurable": {"thread_id": run_dir.name}, "recursion_limit": 100}
     try:
@@ -177,12 +206,49 @@ def cmd_eval(_args) -> int:
     return eval_main()
 
 
+def cmd_account(args) -> int:
+    from workspaces import WorkspaceError, add_account, list_accounts, load_account
+    if args.action in ("add", "show") and not args.domain:
+        console.print(f"[red]account {args.action} requires a domain, e.g. `run.py account {args.action} example.com`[/red]")
+        return 2
+    try:
+        if args.action == "add":
+            root = add_account(args.domain)
+            console.print(f"[green]account created → {root}[/green]")
+            console.print("Next: fill in account.yaml (canonical_sources, audience) "
+                          "and brand_assets.json; drop GSC exports into gsc/.")
+        elif args.action == "list":
+            accounts = list_accounts()
+            if not accounts:
+                console.print("no accounts yet — `python run.py account add <domain>`")
+            for a in accounts:
+                console.print(f"- {a}")
+        elif args.action == "show":
+            acc = load_account(args.domain)
+            console.print_json(json.dumps({
+                "domain": acc.domain,
+                "audience": acc.audience,
+                "canonical_sources": acc.canonical_sources,
+                "source_precedence": acc.source_precedence,
+                "sitemap": acc.sitemap,
+                "gsc_mode": acc.gsc_mode,
+                "latest_gsc_export": str(p) if (p := acc.latest_gsc_export()) else None,
+                "brand_assets_keys": sorted(acc.brand_assets),
+                "runs": sorted(p.name for p in acc.runs_dir.iterdir()) if acc.runs_dir.exists() else [],
+            }))
+    except WorkspaceError as e:
+        console.print(f"[red]{e}[/red]")
+        return 2
+    return 0
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(prog="run.py", description="SEO/GEO agentic platform")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_audit = sub.add_parser("audit", help="Pipeline A: audit a live URL")
     p_audit.add_argument("--url", required=True)
+    p_audit.add_argument("--account", help="workspace domain to run under (fills GSC + config)")
     p_audit.add_argument("--gsc")
     p_audit.add_argument("--keyword")
     p_audit.add_argument("--out")
@@ -190,6 +256,7 @@ def main(argv=None) -> int:
 
     p_content = sub.add_parser("content", help="Pipeline B: generate content")
     p_content.add_argument("--mode", choices=["rebuild", "net_new"], required=True)
+    p_content.add_argument("--account", help="workspace domain to run under (fills canonical sources, brand assets, audience)")
     p_content.add_argument("--diagnosis")
     p_content.add_argument("--inputs")
     p_content.add_argument("--out")
@@ -199,6 +266,11 @@ def main(argv=None) -> int:
 
     p_eval = sub.add_parser("eval", help="GO/KILL eval gate (rubric + seeded errors)")
     p_eval.set_defaults(fn=cmd_eval)
+
+    p_account = sub.add_parser("account", help="manage multi-domain workspaces")
+    p_account.add_argument("action", choices=["add", "list", "show"])
+    p_account.add_argument("domain", nargs="?")
+    p_account.set_defaults(fn=cmd_account)
 
     args = parser.parse_args(argv)
     return args.fn(args)

@@ -39,6 +39,22 @@ python run.py eval
 Every run writes `runs/<ts>/` with per-node state snapshots, `ledger.json`,
 `package_out.json/md`, and a `runlog.md`.
 
+## Multi-domain accounts
+
+Each domain gets its own isolated workspace (config, brand assets, GSC exports, runs) —
+adding one is configuration, like adding a property in Google Search Console:
+
+```bash
+python run.py account add example.com      # scaffold workspaces/example.com/
+# fill in account.yaml + brand_assets.json, drop GSC export ZIPs into gsc/
+python run.py audit   --account example.com --url https://example.com/page
+python run.py content --account example.com --mode rebuild --diagnosis …
+```
+
+Runs land in `workspaces/example.com/runs/<ts>/`. Accounts are fully isolated;
+explicit CLI flags always override account config. GSC connects via export files
+today; the schema reserves `gsc.mode: api` for a per-domain OAuth upgrade.
+
 ## Status
 
 Phase 0 (skeleton & contracts) is complete; Phases 1–5 are tracked in `CLAUDE.md`,

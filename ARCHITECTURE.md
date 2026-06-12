@@ -168,7 +168,33 @@ prompts; a seed shipping silently ⇒ stop everything and fix guardrails.
 | CLI + run directories, no UI/CMS | reproducibility first; publishing stays a human act |
 | SQLite checkpointer from Phase 3 | resume + audit-trail without infra; in-memory is enough to prove the walking skeleton |
 
-## 9. Current status & known gaps
+## 9. Multi-domain workspaces
+
+The pipelines are account-agnostic by design — every run is driven entirely by its
+inputs. The workspace layer (`workspaces.py`) makes those inputs durable per domain,
+GSC-property style:
+
+```
+workspaces/<domain>/
+├── account.yaml        # canonical sources, audience, precedence, sitemap, gsc mode
+├── brand_assets.json   # differentiators, author, permissioned testimonials
+├── gsc/                # this domain's GSC export files (mode: export)
+└── runs/               # this account's audit + content runs
+```
+
+- `run.py account add|list|show <domain>` manages accounts; adding one is pure
+  configuration, no code.
+- `--account <domain>` on `audit`/`content` fills canonical sources, brand assets,
+  audience, precedence, and the newest GSC export; explicit CLI flags override.
+- Isolation is structural: each account has its own ledger, runs, assets, and
+  budgets — facts from one domain can never leak into another's content
+  (pinned by `tests/test_workspaces.py`).
+- `gsc.mode: export` is live (drop export ZIPs in `gsc/`); `mode: api` is reserved
+  in the schema for a per-domain OAuth upgrade and fails loudly until built.
+- `SEO_WORKSPACES_DIR` relocates the whole tree (tests, deployments).
+- `workspaces/` is gitignored — it is client data, not platform code.
+
+## 10. Current status & known gaps
 
 Phase status is tracked in `CLAUDE.md`. The reference assets named in BUILD-SPEC §1/§8/§9
 (design docs, prompt kit, gold files, page-runs) were **not present in this repository**
