@@ -17,8 +17,19 @@ writer ≠ verifier separation, and human checkpoints for facts no model can kno
 
 ```bash
 pip install -r requirements.txt
-pytest          # 40+ tests pin the guardrail/ledger/state contracts
+pytest          # 90+ tests pin the guardrail/ledger/state contracts
 ```
+
+### Model provider
+
+`config.yaml → provider` selects who serves the models (offline `--fake` runs need neither):
+
+| provider | env vars | tiers |
+|---|---|---|
+| `anthropic` | `ANTHROPIC_API_KEY` | `models:` strong=Sonnet, fast=Haiku |
+| `azure_openai` | `AZURE_OPENAI_ENDPOINT` (full Responses-API URL incl. `?api-version=`), `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (or per-tier names in `azure_openai.deployments`) | deployments play the strong/fast roles |
+
+Keys never go in committed files. With `azure_openai`, update `pricing:` to your Azure rates or runlog cost figures will be wrong.
 
 ## The three commands
 

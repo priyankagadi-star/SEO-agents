@@ -40,6 +40,9 @@ Ask the owner for them; do not invent substitutes:
 - Never build: auto-publish, CMS writes, fabricated reviews/aggregateRating,
   auto-resolution of source conflicts.
 - Models come from `config.yaml` (strong/fast tiers), never hard-coded in nodes.
+- Model provider is switchable (`config.yaml → provider`): `anthropic` (spec default)
+  or `azure_openai` (owner-requested adapter; tiers map to Azure deployments;
+  env: AZURE_OPENAI_ENDPOINT/_API_KEY/_DEPLOYMENT). Keys live in env, never in files.
 
 ## Commands
 ```

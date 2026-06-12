@@ -66,7 +66,8 @@ def reset_client() -> None:
 def get_client():
     global _CLIENT
     if _CLIENT is None:
-        _CLIENT = AnthropicClient()
+        provider = _CONFIG.get("provider", "anthropic")
+        _CLIENT = AzureOpenAIClient() if provider == "azure_openai" else AnthropicClient()
     return _CLIENT
 
 
@@ -98,6 +99,78 @@ class AnthropicClient:
             "output_tokens": getattr(resp.usage, "output_tokens", 0),
         }
         return text, usage
+
+
+class AzureOpenAIClient:
+    """Azure OpenAI client via the Responses API (raw HTTPS, no extra SDK dep).
+
+    Reads from env:
+      AZURE_OPENAI_ENDPOINT    full Responses URL incl. ?api-version=...
+                               e.g. https://<res>.cognitiveservices.azure.com/openai/responses?api-version=2025-04-01-preview
+      AZURE_OPENAI_API_KEY     the resource key
+      AZURE_OPENAI_DEPLOYMENT  fallback deployment for both tiers (per-tier names
+                               live in config.yaml -> azure_openai.deployments)
+
+    The strong/fast tier abstraction is preserved: a tier maps to an Azure
+    deployment name instead of a Claude model id.
+    """
+
+    def __init__(self, endpoint: str | None = None, api_key: str | None = None,
+                 deployments: dict | None = None, max_output_tokens: int = 4096,
+                 transport=None):
+        import os
+        cfg = _CONFIG.get("azure_openai", {})
+        self.endpoint = endpoint or os.environ.get("AZURE_OPENAI_ENDPOINT", "")
+        self.api_key = api_key or os.environ.get("AZURE_OPENAI_API_KEY", "")
+        self.deployments = {k: v for k, v in (deployments or cfg.get("deployments", {})).items() if v}
+        self.fallback_deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT", "")
+        self.max_output_tokens = max_output_tokens
+        self._transport = transport
+        if not self.endpoint or not self.api_key:
+            raise RuntimeError(
+                "Azure OpenAI provider selected (config.yaml -> provider) but "
+                "AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_KEY are not set in the "
+                "environment. Add them to the Claude Code environment variables, "
+                "or run with --fake, or switch provider to 'anthropic'."
+            )
+
+    def _deployment(self, tier: str) -> str:
+        dep = self.deployments.get(tier) or self.fallback_deployment
+        if not dep:
+            raise RuntimeError(
+                f"No Azure deployment configured for tier '{tier}'. Set "
+                "azure_openai.deployments in config.yaml or the "
+                "AZURE_OPENAI_DEPLOYMENT environment variable."
+            )
+        return dep
+
+    def complete(self, prompt: str, tier: str, node_id: str | None = None) -> tuple[str, dict]:
+        import httpx
+        deployment = self._deployment(tier)
+        transport = self._transport or httpx.HTTPTransport(retries=2)
+        with httpx.Client(timeout=180.0, transport=transport) as client:
+            resp = client.post(
+                self.endpoint,
+                headers={"api-key": self.api_key, "content-type": "application/json"},
+                json={"model": deployment, "input": prompt,
+                      "max_output_tokens": self.max_output_tokens},
+            )
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") and data["status"] != "completed":
+            err = (data.get("error") or {}).get("message") or data.get("incomplete_details")
+            raise RuntimeError(f"Azure OpenAI response not completed ({data['status']}): {err}")
+        text = "".join(
+            part.get("text", "")
+            for item in data.get("output", []) if item.get("type") == "message"
+            for part in item.get("content", []) if part.get("type") == "output_text"
+        )
+        usage = data.get("usage", {})
+        return text, {
+            "model": f"azure:{deployment}",
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        }
 
 
 _FENCE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)

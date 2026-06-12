@@ -1,8 +1,19 @@
 models: {strong: claude-sonnet-4-6, fast: claude-haiku-4-5-20251001}
+# model provider: anthropic | azure_openai
+provider: azure_openai
+azure_openai:
+  # endpoint + key come from env: AZURE_OPENAI_ENDPOINT (the full Responses-API
+  # URL incl. ?api-version=...) and AZURE_OPENAI_API_KEY — never from this file.
+  # Azure "deployments" play the role of the strong/fast model tiers.
+  # Fill in your deployment names (Azure portal -> your resource -> Deployments);
+  # AZURE_OPENAI_DEPLOYMENT env var is the fallback for both tiers.
+  deployments: {strong: "", fast: ""}
 # USD per million tokens (update alongside model changes)
 pricing:
   strong: {input_per_mtok: 3.00, output_per_mtok: 15.00}
   fast: {input_per_mtok: 1.00, output_per_mtok: 5.00}
+  # NOTE: the values above are Claude prices. On azure_openai, set them to your
+  # Azure deployment prices or cost figures in the runlog will be wrong.
 route_back_cap: 2
 budgets: {max_cost_usd_per_page: 3.0, max_minutes_per_page: 15}
 ui_limits: {h1_chars: 60, meta_chars: 155, cta_words: 5}
