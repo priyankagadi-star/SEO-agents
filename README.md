@@ -37,7 +37,15 @@ python run.py eval
 ```
 
 Every run writes `runs/<ts>/` with per-node state snapshots, `ledger.json`,
-`package_out.json/md`, and a `runlog.md`.
+`package_out.json/md`, and a `runlog.md` carrying per-node latency, token usage,
+and cost (model pricing lives in `config.yaml`) with budget warnings.
+
+Interrupted runs resume from their SQLite checkpoint — completed nodes are never
+re-executed and the resulting package is byte-identical:
+
+```bash
+python run.py content --resume runs/<ts>
+```
 
 ## Multi-domain accounts
 

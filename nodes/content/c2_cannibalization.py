@@ -22,7 +22,9 @@ def run(state: dict) -> dict:
 
     import httpx
     try:
-        resp = httpx.get(sitemap_url, timeout=20.0, follow_redirects=True)
+        transport = httpx.HTTPTransport(retries=2)
+        with httpx.Client(timeout=20.0, transport=transport, follow_redirects=True) as client:
+            resp = client.get(sitemap_url)
         urls = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", resp.text)
     except Exception as e:  # degrade honestly, do not fail the run on a sitemap hiccup
         return {"_guardrails": [{"check": "cannibalization", "status": "not-checked",

@@ -101,13 +101,26 @@ def _load_node(node_id: str) -> Callable[[dict], dict]:
 
 def _validated(node_id: str, fn: Callable[[dict], dict]) -> Callable[[dict], dict]:
     def wrapped(state: dict) -> dict:
+        from time import perf_counter
+
+        from llm import drain_usage
+
+        drain_usage()  # discard anything stale from a failed prior node
+        start = perf_counter()
         update = fn(state) or {}
+        duration_ms = round((perf_counter() - start) * 1000, 1)
         validate_state({**state, **update}, after_node=node_id)
-        # accumulate a runlog entry (BUILD-SPEC §10: one section per node)
+        usage = drain_usage()
+        # accumulate a runlog entry (BUILD-SPEC §10: one section per node).
+        # duration/cost are runlog-only — the packager's qa_checklist must stay
+        # deterministic so resumed runs hash identically (Phase 5 acceptance).
         entry = {
             "node": node_id,
             "output_keys": sorted(k for k in update if not k.startswith("_")),
             "guardrails": update.get("_guardrails", []),
+            "duration_ms": duration_ms,
+            "usage": usage,
+            "cost_usd": round(sum(u["cost_usd"] for u in usage), 6),
         }
         runlog = list(state.get("_runlog", []))
         runlog.append(entry)

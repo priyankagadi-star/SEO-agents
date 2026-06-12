@@ -28,8 +28,17 @@ def _load_node(node_id: str) -> Callable[[dict], dict]:
 
 def _validated(node_id: str, fn: Callable[[dict], dict]) -> Callable[[dict], dict]:
     def wrapped(state: dict) -> dict:
-        update = fn(state)
+        from time import perf_counter
+        start = perf_counter()
+        update = fn(state) or {}
+        duration_ms = round((perf_counter() - start) * 1000, 1)
         validate_state({**state, **update}, after_node=node_id)
+        # _runlog is a reducer channel (operator.add): emit only this node's entry
+        update["_runlog"] = [{
+            "node": node_id,
+            "output_keys": sorted(k for k in update if not k.startswith("_")),
+            "duration_ms": duration_ms,
+        }]
         return update
     wrapped.__name__ = node_id
     return wrapped

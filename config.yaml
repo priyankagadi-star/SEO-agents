@@ -1,4 +1,8 @@
 models: {strong: claude-sonnet-4-6, fast: claude-haiku-4-5-20251001}
+# USD per million tokens (update alongside model changes)
+pricing:
+  strong: {input_per_mtok: 3.00, output_per_mtok: 15.00}
+  fast: {input_per_mtok: 1.00, output_per_mtok: 5.00}
 route_back_cap: 2
 budgets: {max_cost_usd_per_page: 3.0, max_minutes_per_page: 15}
 ui_limits: {h1_chars: 60, meta_chars: 155, cta_words: 5}

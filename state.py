@@ -4,7 +4,8 @@ BUILD-SPEC §4: TypedDicts are written verbatim from the spec and extended only
 additively. Every graph hand-off calls validate_state(); failure raises
 StateValidationError — never silently continue.
 """
-from typing import Any, Literal, Optional, TypedDict
+import operator
+from typing import Annotated, Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 from typing_extensions import NotRequired
@@ -164,6 +165,8 @@ class AuditState(TypedDict):
     performance: NotRequired[dict]
     diagnosis: NotRequired[Diagnosis]
     master_report_md: NotRequired[str]
+    # reducer channel: parallel analyzers each append their own runlog entry
+    _runlog: NotRequired[Annotated[list, operator.add]]
 
 
 # ---------------------------------------------------------------------------

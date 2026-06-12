@@ -87,6 +87,7 @@ def cmd_audit(args) -> int:
     result = graph.invoke(state, config={"configurable": {"thread_id": run_dir.name}})
     (run_dir / "diagnosis.json").write_text(json.dumps(result.get("diagnosis"), indent=2))
     (run_dir / "master_report.md").write_text(result.get("master_report_md", ""))
+    (run_dir / "runlog.md").write_text(_runlog_md(result.get("_runlog", []), result))
     (run_dir / "state.json").write_text(json.dumps(
         {k: v for k, v in result.items() if k != "page"}, indent=2, default=str))
     d = result.get("diagnosis", {})
@@ -122,10 +123,27 @@ def _package_md(p: dict) -> str:
 
 
 def _runlog_md(runlog: list, result: dict) -> str:
-    lines = ["# Run log", "", f"Route-back counts: {result.get('route_back_count', {})}", ""]
+    import yaml
+    budgets = yaml.safe_load(Path("config.yaml").read_text()).get("budgets", {})
+    total_cost = round(sum(e.get("cost_usd", 0) for e in runlog), 4)
+    total_ms = round(sum(e.get("duration_ms", 0) for e in runlog), 1)
+    lines = [
+        "# Run log", "",
+        f"- total cost: **${total_cost}** (budget ${budgets.get('max_cost_usd_per_page', '–')})",
+        f"- total node time: **{total_ms / 1000:.1f}s** (budget {budgets.get('max_minutes_per_page', '–')} min)",
+        f"- route-back counts: {result.get('route_back_count', {})}",
+        "",
+    ]
+    if budgets.get("max_cost_usd_per_page") and total_cost > budgets["max_cost_usd_per_page"]:
+        lines.insert(3, f"- ⚠️ **COST BUDGET EXCEEDED** (${total_cost} > ${budgets['max_cost_usd_per_page']})")
     for e in runlog:
         lines.append(f"## {e['node']}")
         lines.append(f"- output keys: {', '.join(e.get('output_keys', [])) or '(none)'}")
+        if "duration_ms" in e:
+            lines.append(f"- duration: {e['duration_ms']} ms" +
+                         (f" · cost: ${e['cost_usd']}" if e.get("usage") else ""))
+        for u in e.get("usage", []):
+            lines.append(f"- model call: {u['model']} — {u['input_tokens']} in / {u['output_tokens']} out (${u['cost_usd']})")
         for g in e.get("guardrails", []):
             lines.append(f"- guardrail: {g}")
         lines.append("")
@@ -141,6 +159,12 @@ def cmd_content(args) -> int:
         validate_diagnosis,
     )
 
+    if args.resume:
+        return _resume_content(Path(args.resume))
+    if not args.mode:
+        console.print("[red]--mode is required (or use --resume runs/<ts>)[/red]")
+        return 2
+
     if getattr(args, "fake", False):
         from fakes import ScriptedLLM, make_cold_script, make_rebuild_script
         from llm import set_client
@@ -150,6 +174,9 @@ def cmd_content(args) -> int:
     account = load_account_or_exit(args.account) if args.account else None
     acct = account.content_inputs() if account else {}
     run_dir = new_run_dir(args.out, account=account)
+    (run_dir / "run.json").write_text(json.dumps(
+        {"pipeline": "content", "mode": args.mode, "fake": bool(args.fake),
+         "thread_id": run_dir.name}, indent=2))
     if args.mode == "net_new":
         # account config can satisfy fields so inputs.json may carry only the rest
         required = [f for f in NET_NEW_REQUIRED if f not in ("canonical_sources", "brand_assets", "audience") or not acct.get(f)]
@@ -214,6 +241,42 @@ def cmd_content(args) -> int:
     return 0
 
 
+def _resume_content(run_dir: Path) -> int:
+    """Resume an interrupted content run from its SQLite checkpoint (Phase 5)."""
+    from graphs.content_graph import build_content_graph
+    from state import EscalateToHuman
+
+    meta_path = run_dir / "run.json"
+    if not meta_path.exists():
+        console.print(f"[red]no run.json in {run_dir} — not a resumable run[/red]")
+        return 2
+    meta = json.loads(meta_path.read_text())
+    if not (run_dir / "checkpoint.sqlite").exists():
+        console.print(f"[red]no checkpoint.sqlite in {run_dir}[/red]")
+        return 2
+    if meta.get("fake"):
+        from fakes import ScriptedLLM, make_cold_script, make_rebuild_script
+        from llm import set_client
+        script = make_cold_script() if meta["mode"] == "net_new" else make_rebuild_script(poison_first_pass=False)
+        set_client(ScriptedLLM(script))
+
+    graph = build_content_graph(checkpointer=sqlite_checkpointer(run_dir))
+    config = {"configurable": {"thread_id": meta["thread_id"]}, "recursion_limit": 100}
+    if not graph.get_state(config).values:
+        console.print(f"[yellow]checkpoint in {run_dir} is empty (run died before the first "
+                      "node completed) — nothing to resume; start the run again.[/yellow]")
+        return 2
+    try:
+        result = graph.invoke(None, config=config)  # None = continue from checkpoint
+    except EscalateToHuman as e:
+        console.print(f"[red]Escalated to human: {e}[/red]")
+        return 1
+    write_run_artifacts(run_dir, result)
+    verdict = (result.get("critic_report") or {}).get("verdict", "?")
+    console.print(f"[green]resumed run complete (critic: {verdict}) → {run_dir}[/green]")
+    return 0
+
+
 def cmd_eval(_args) -> int:
     from eval.run_eval import main as eval_main
     return eval_main()
@@ -268,13 +331,15 @@ def main(argv=None) -> int:
     p_audit.set_defaults(fn=cmd_audit)
 
     p_content = sub.add_parser("content", help="Pipeline B: generate content")
-    p_content.add_argument("--mode", choices=["rebuild", "net_new"], required=True)
+    p_content.add_argument("--mode", choices=["rebuild", "net_new"])
     p_content.add_argument("--account", help="workspace domain to run under (fills canonical sources, brand assets, audience)")
     p_content.add_argument("--diagnosis")
     p_content.add_argument("--inputs")
     p_content.add_argument("--out")
     p_content.add_argument("--fake", action="store_true",
                            help="run with the offline scripted LLM (no API key needed)")
+    p_content.add_argument("--resume", metavar="runs/<ts>",
+                           help="resume an interrupted run from its checkpoint")
     p_content.set_defaults(fn=cmd_content)
 
     p_eval = sub.add_parser("eval", help="GO/KILL eval gate (rubric + seeded errors)")
