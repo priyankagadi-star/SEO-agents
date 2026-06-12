@@ -63,16 +63,20 @@ def load_account_or_exit(domain: str):
         sys.exit(2)
 
 
+def sqlite_checkpointer(run_dir: Path):
+    """SQLite checkpointer (BUILD-SPEC §2, Phase 3) — checkpoint lives in the run dir."""
+    import sqlite3
+
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    conn = sqlite3.connect(run_dir / "checkpoint.sqlite", check_same_thread=False)
+    return SqliteSaver(conn)
+
+
 def cmd_audit(args) -> int:
     from graphs.audit_graph import build_audit_graph
     account = load_account_or_exit(args.account) if args.account else None
     run_dir = new_run_dir(args.out, account=account)
-    try:
-        graph = build_audit_graph()
-    except NotImplementedError as e:
-        console.print(f"[yellow]{e}[/yellow]")
-        console.print("[yellow]Audit pipeline lands in Phase 3 (see BUILD-SPEC §11 / CLAUDE.md phase status).[/yellow]")
-        return 1
+    graph = build_audit_graph(checkpointer=sqlite_checkpointer(run_dir))
     state = {"url": args.url}
     # explicit flags override account config; account fills the gaps
     gsc_path = args.gsc or (str(p) if account and (p := account.latest_gsc_export()) else None)
@@ -80,10 +84,16 @@ def cmd_audit(args) -> int:
         state["gsc_path"] = gsc_path
     if args.keyword:
         state["primary_query"] = args.keyword
-    result = graph.invoke(state)
+    result = graph.invoke(state, config={"configurable": {"thread_id": run_dir.name}})
     (run_dir / "diagnosis.json").write_text(json.dumps(result.get("diagnosis"), indent=2))
     (run_dir / "master_report.md").write_text(result.get("master_report_md", ""))
-    console.print(f"[green]audit complete → {run_dir}[/green]")
+    (run_dir / "state.json").write_text(json.dumps(
+        {k: v for k, v in result.items() if k != "page"}, indent=2, default=str))
+    d = result.get("diagnosis", {})
+    console.print(f"[green]audit complete — {len(d.get('defects', []))} defects, "
+                  f"{len(d.get('keep_list', []))} keep-list items → {run_dir}[/green]")
+    console.print(f"next: python run.py content --mode rebuild --diagnosis {run_dir / 'diagnosis.json'}"
+                  + (f" --account {account.domain}" if account else " --inputs inputs.json"))
     return 0
 
 
@@ -123,8 +133,6 @@ def _runlog_md(runlog: list, result: dict) -> str:
 
 
 def cmd_content(args) -> int:
-    from langgraph.checkpoint.memory import MemorySaver
-
     from graphs.content_graph import build_content_graph
     from state import (
         EscalateToHuman,
@@ -182,7 +190,7 @@ def cmd_content(args) -> int:
         )
     if acct.get("source_precedence"):
         state["source_precedence"] = acct["source_precedence"]
-    graph = build_content_graph(checkpointer=MemorySaver())
+    graph = build_content_graph(checkpointer=sqlite_checkpointer(run_dir))
     config = {"configurable": {"thread_id": run_dir.name}, "recursion_limit": 100}
     try:
         result = graph.invoke(state, config=config)

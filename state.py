@@ -138,6 +138,7 @@ class ContentState(TypedDict):
 # additive: Pipeline A working state (BUILD-SPEC §5a node ownership)
 class AuditState(TypedDict):
     url: str
+    gsc_path: NotRequired[str]                    # CLI/account-supplied export path
     page: NotRequired[dict]                       # output of a0 (tools/fetch shape)
     page_type: NotRequired[str]
     primary_query: NotRequired[str]

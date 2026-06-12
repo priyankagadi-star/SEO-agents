@@ -8,6 +8,8 @@ guardrails are authoritative — they are the product.
 """
 from __future__ import annotations
 
+import re
+
 from guardrails import (
     VERIFY_PAT,
     fact_diff,
@@ -35,12 +37,22 @@ def run(state: dict) -> dict:
                          "severity": v.severity, "evidence": v.detail,
                          "fix": "Ground the quantifier in a verified fact or soften it."})
 
-    # keep_list survival (dropping a kept strength is the classic rebuild failure)
+    # keep_list survival (dropping a kept strength is the classic rebuild failure).
+    # Entity-like keeps (proper-noun items, e.g. "Sample Variance differentiator")
+    # are deterministically checkable by substring -> blocker when absent.
+    # Quality-phrase keeps from the audit (all-lowercase, e.g. "single clear H1")
+    # can't be substring-matched in prose -> surfaced as major for c21, the
+    # comparison judge, which verifies them against the live page.
     for item in state.get("keep_list") or []:
-        token = str(item).split(" differentiator")[0].strip()
+        s = str(item)
+        token = s.split(" differentiator")[0].strip()
         if token and token.lower() not in draft.lower():
+            # proper-noun word ("Sample") => entity; acronyms ("H1","FAQ","AI") don't count
+            entity_like = bool(re.search(r"\b[A-Z][a-z]+", s))
             failures.append({"description": f"keep_list item missing from draft: {item}",
-                             "owning_step": "c9_outline", "severity": "blocker", "evidence": item,
+                             "owning_step": "c9_outline",
+                             "severity": "blocker" if entity_like else "major",
+                             "evidence": item,
                              "fix": "Assign this kept strength to a section and cover it."})
 
     # entity coverage from the gap matrix (reported as major in Phase 1)
