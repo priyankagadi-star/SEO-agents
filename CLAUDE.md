@@ -16,6 +16,7 @@ the design rationale.
 | 4 | cold mode + remaining agents (c2–c6, c14, c15, c17, c20, c21) | ✅ done — 71 tests green; `content --mode net_new --inputs … --fake` runs from a seed keyword with no live page; c21 skipped in cold mode; volumes never fabricated (stub SERP honest); permission:false testimonials structurally excluded; L6 gate combines c19+c20+c21 |
 | 5 | hardening: cost/latency, retries, --resume, README | ⬜ |
 | W | multi-domain workspace layer (`workspaces.py`, `run.py account`, `--account`) | ✅ done — per-domain config/runs/GSC isolation; `gsc.mode: api` reserved for OAuth upgrade |
+| P | page-type structure contracts (`page_profiles.py`) | ✅ done — per-type required blocks + schema @types + budgets; enforced at c8 (brief seed/backfill), c9 (outline), c18 (schema), c20 (structure check, major). 80 tests green |
 
 ## Missing reference assets — [VERIFY-WITH-OWNER]
 BUILD-SPEC references files that were **not in this repository** at Phase 0.

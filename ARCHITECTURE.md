@@ -168,6 +168,31 @@ prompts; a seed shipping silently ⇒ stop everything and fix guardrails.
 | CLI + run directories, no UI/CMS | reproducibility first; publishing stays a human act |
 | SQLite checkpointer from Phase 3 | resume + audit-trail without infra; in-memory is enough to prove the walking skeleton |
 
+## 8a. Page-type structure contracts
+
+`page_type` is not just a label — each type carries a **structure contract**
+(`page_profiles.py`) that flows through the pipeline:
+
+| page_type | required blocks (abridged) | schema @types | budget |
+|---|---|---|---|
+| feature | problem · how-it-works · capabilities · differentiators · proof · FAQ · CTA | WebPage, SoftwareApplication, FAQPage | 1400–1800 |
+| comparison | verdict · **at-a-glance table** · criteria · head-to-head · pros/cons · who-should · FAQ | WebPage, FAQPage | 1500–2200 |
+| guide | summary · prerequisites · **step-by-step** · examples · mistakes · FAQ | WebPage, HowTo, FAQPage | 2000–3200 |
+| blog-listicle | intro · selection criteria · ranked items · summary · FAQ | WebPage, ItemList, FAQPage | 1800–2600 |
+| glossary | **definition (≤60w)** · attributes · how-it-works · examples · related · FAQ | WebPage, DefinedTerm, FAQPage | 800–1400 |
+| landing | hero value prop · benefits · social proof · how-it-works · CTA | WebPage | 600–1200 |
+
+Enforcement points (the contract, not a prompt suggestion):
+- **c8** seeds `brief["structure"]` from the profile and re-merges any required
+  block the model dropped — the brief can never lose a block.
+- **c9** is told the required blocks and records which section covers each.
+- **c18** picks JSON-LD @types from the profile (glossary→`DefinedTerm`,
+  feature→`SoftwareApplication`, guide→`HowTo`, listicle→`ItemList`).
+- **c20** deterministically flags required blocks absent from the draft
+  (severity `major` — visible, tunable to blocker once prompts are tuned).
+
+Word budgets defer to `config.yaml` where defined, so the two never diverge.
+
 ## 9. Multi-domain workspaces
 
 The pipelines are account-agnostic by design — every run is driven entirely by its

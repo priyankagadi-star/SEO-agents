@@ -14,6 +14,7 @@ from pathlib import Path
 import yaml
 
 from ledger import FactsLedger
+from page_profiles import get_profile
 
 _CFG = yaml.safe_load((Path(__file__).parents[2] / "config.yaml").read_text())
 _LIMITS = _CFG["ui_limits"]
@@ -67,8 +68,17 @@ def run(state: dict) -> dict:
                              "evidence": str(item.get("placement")),
                              "fix": "Assign the image to an existing section id."})
 
+    # page-type structure contract: required blocks must reach the draft
+    profile = get_profile(state.get("page_type"))
+    for block in profile.missing_blocks(draft, state.get("outline")):
+        failures.append({"description": f"{profile.page_type} page missing required block: {block.label}",
+                         "owning_step": "c9_outline", "severity": "major",
+                         "evidence": f"no cue for '{block.id}' in draft/outline",
+                         "fix": f"Add a section covering '{block.label}'."})
+
     blockers = [x for x in failures if x["severity"] == "blocker"]
     return {"render_report": {"verdict": "fail" if blockers else "pass",
+                              "page_type": profile.page_type,
                               "failures": failures},
             "_guardrails": [{"check": "render_critic",
                              "verdict": "fail" if blockers else "pass",
