@@ -48,6 +48,19 @@ sitemap: ""
 gsc:
   mode: export          # "export" today; "api" (OAuth) is a future upgrade
   exports_dir: gsc      # folder (inside this account) holding export ZIPs/CSVs
+
+# Optional site cluster map (pillar + spokes). Lets the platform enforce
+# "link, don't host" at the outline gate so a page never trespasses on a
+# sibling's intent. Omit for single-page optimization.
+# cluster_map:
+#   pillar:
+#     url: "https://example.com/topic"
+#     intent: "topic"
+#     keywords: ["topic"]
+#   spokes:
+#     - url: "https://example.com/topic/subtopic"
+#       intent: "subtopic"
+#       keywords: ["subtopic phrase", "another signal"]
 """
 
 BRAND_ASSETS_TEMPLATE = {
@@ -88,6 +101,7 @@ class Account:
     gsc_mode: str = "export"
     gsc_dir: Path | None = None
     brand_assets: dict = field(default_factory=dict)
+    cluster_map: dict = field(default_factory=dict)   # pillar/spoke topology (L−1)
 
     @property
     def runs_dir(self) -> Path:
@@ -107,6 +121,7 @@ class Account:
             "canonical_sources": list(self.canonical_sources),
             "source_precedence": list(self.source_precedence),
             "brand_assets": dict(self.brand_assets),
+            "cluster_map": dict(self.cluster_map),
         }
 
 
@@ -174,4 +189,5 @@ def load_account(domain: str) -> Account:
         gsc_mode=gsc_mode,
         gsc_dir=root / (gsc_cfg.get("exports_dir") or "gsc"),
         brand_assets=brand_assets,
+        cluster_map=cfg.get("cluster_map") or {},
     )

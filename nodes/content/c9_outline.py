@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+from guardrails import intent_boundary_check
 from ledger import FactsLedger
 from llm import call_node
 from page_profiles import get_profile
@@ -27,8 +28,14 @@ def run(state: dict) -> dict:
     )
     outline = out.get("outline", out)
     unassigned = out.get("unassigned", outline.get("unassigned", []))
+    # inverse coverage check: is any planned section owned by a SIBLING URL?
+    trespasses = intent_boundary_check(outline, state.get("cluster_map"),
+                                       state.get("page_intent"), state.get("target_url"))
     return {
         "outline": outline,
-        "_guardrails": [{"check": "entity_coverage", "unassigned": unassigned,
-                         "sections": len(outline.get("sections", []))}],
+        "_guardrails": [
+            {"check": "entity_coverage", "unassigned": unassigned,
+             "sections": len(outline.get("sections", []))},
+            {"check": "intent_boundary", "trespasses": [v.detail for v in trespasses]},
+        ],
     }

@@ -168,6 +168,30 @@ prompts; a seed shipping silently ⇒ stop everything and fix guardrails.
 | CLI + run directories, no UI/CMS | reproducibility first; publishing stays a human act |
 | SQLite checkpointer from Phase 3 | resume + audit-trail without infra; in-memory is enough to prove the walking skeleton |
 
+## 8b. Site-level intent boundary (L−1: link, don't host)
+
+Single-page completeness is a trap: optimizing each page to be "maximally
+complete" makes siblings cannibalize each other. The fix is one site-level input
+and one deterministic gate.
+
+- **Input:** a `cluster_map` (`cluster_map.py`) — the site's pillar/spoke
+  topology, each entry declaring an intent and the one URL that owns it. Supplied
+  per account (`account.yaml → cluster_map`) or per run (`inputs.json`); absent ⇒
+  **single-page mode** (no constraints — every existing run is unaffected).
+- **Resolution (c2, L0):** the upgraded Cannibalization & Intent Guard resolves
+  this page's `page_intent` from the map, and for each planned subtopic emits a
+  host-vs-link verdict, accumulating sibling-owned intents into `delegate_list`.
+- **Enforcement:** `intent_boundary_check(outline, cluster_map, page_intent,
+  current_url)` is the **cluster-level sibling of `fact_diff`** — where `fact_diff`
+  stops a page contradicting the facts, this stops it *trespassing* on a sibling's
+  intent. It runs at **c9** (outline gate, inverse coverage check) and is
+  re-checked at **c19** (blocker → route back to c9 → convert the section to an
+  internal link). Pure, no model calls, unit-tested.
+
+A section is allowed when it covers the page's own intent or an intent this URL
+owns; a section whose intent another URL owns is a blocker to delegate. Novel,
+unowned intents are free to host — the gate constrains trespassing, not coverage.
+
 ## 8a. Page-type structure contracts
 
 `page_type` is not just a label — each type carries a **structure contract**

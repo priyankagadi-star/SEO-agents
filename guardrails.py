@@ -191,3 +191,40 @@ def source_precedence(conflict: dict, precedence: list[str]) -> dict:
         "recommended": recommended,
         "note": "Conflict must be resolved by a human; 'recommended' is the highest-precedence source class only.",
     }
+
+
+def intent_boundary_check(outline, cluster_map, page_intent=None, current_url=None) -> list[Violation]:
+    """The cluster-level sibling of fact_diff: stop a page hosting a section
+    whose intent is owned by a sibling URL ("link, don't host").
+
+    Deterministic, no model calls. `cluster_map` may be a ClusterMap or the plain
+    dict from state; a falsy cluster_map means single-page mode → no violations.
+    A section is allowed when it covers the page's own intent (page_intent) or an
+    intent this URL (current_url) owns; otherwise it is a blocker to delegate.
+    """
+    if not cluster_map:
+        return []
+    from cluster_map import ClusterMap
+    cm = cluster_map if hasattr(cluster_map, "match") else ClusterMap.from_config(cluster_map)
+    if cm is None:
+        return []
+
+    cur = (current_url or "").rstrip("/")
+    out: list[Violation] = []
+    for section in (outline or {}).get("sections", []):
+        text = f"{section.get('h2', '')} {section.get('intent', '')}".strip()
+        if not text:
+            continue
+        entry = cm.match(text)
+        if entry is None:
+            continue  # unowned intent — novel, fine to host
+        if page_intent and entry.intent == page_intent:
+            continue  # this is the page's own intent
+        if cur and entry.url.rstrip("/") == cur:
+            continue  # this URL already owns it
+        label = section.get("h2") or section.get("id") or text[:40]
+        out.append(Violation(
+            "intent_trespass",
+            f"section '{label}' covers intent '{entry.intent}' owned by {entry.url} — link, don't host",
+        ))
+    return out

@@ -238,6 +238,17 @@ def source_precedence(conflict: dict, precedence: list[str]) -> dict:
     ...
 ```
 
+**§6a — Intent boundary (cluster-level, added post-Phase-5).** `intent_boundary_check(outline, cluster_map, page_intent, current_url) -> list[Violation]`:
+the cluster-level sibling of `fact_diff`. Given the site's `cluster_map` (pillar/spokes,
+each intent → owning URL; `cluster_map.py`), any outline section whose intent is owned by a
+*different* URL is a blocker to delegate ("link, don't host"). Deterministic, no model calls.
+Runs at c9 (outline) and c19 (re-check → route back). Falsy `cluster_map` ⇒ single-page mode
+(no violations). c2 is the L−1 "Cannibalization & Intent Guard": it resolves `page_intent` +
+`delegate_list` and emits per-subtopic host/link verdicts. New optional state field:
+`cluster_map` (both modes; supplied via `account.yaml` or `inputs.json`).
+Mandatory test (case 7): a brand-monitoring page with "how to choose" + "vs social listening"
+sections, against a cluster map where siblings own those intents → both flagged `intent_trespass`.
+
 `ledger.py`: class `FactsLedger` wrapping `list[Fact]` — `add(fact)` (append-only; adding an id that exists with a different value auto-creates a `conflict` entry instead of overwriting), `get(id)`, `supports_number(s)` (normalized numeric containment over verified facts), `to_markdown()`.
 **These functions are the product.** Write `tests/test_guardrails.py` FIRST with these mandatory cases (all from real failures in this project):
 1. `fact_diff` catches draft saying "nine AI engines" when ledger locks engines-count=4 → blocker.

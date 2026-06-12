@@ -14,6 +14,7 @@ from guardrails import (
     VERIFY_PAT,
     fact_diff,
     flag_dont_fill,
+    intent_boundary_check,
     quantifier_check,
 )
 from ledger import FactsLedger
@@ -62,6 +63,14 @@ def run(state: dict) -> dict:
             failures.append({"description": f"gap entity not covered: {entity}",
                              "owning_step": "c9_outline", "severity": "major", "evidence": entity,
                              "fix": "Add a section/passage covering this entity."})
+
+    # intent boundary: a drafted section owned by a sibling URL is a blocker —
+    # the cluster-level sibling of fact_diff (host→link). Single-page mode is a no-op.
+    for v in intent_boundary_check(state.get("outline") or {}, state.get("cluster_map"),
+                                   state.get("page_intent"), state.get("target_url")):
+        failures.append({"description": v.detail, "owning_step": "c9_outline",
+                         "severity": "blocker", "evidence": v.detail,
+                         "fix": "Convert this section to an internal link to the owning URL; do not host it."})
 
     # unresolved evidence flags must not ship
     for flag in VERIFY_PAT.findall(draft):

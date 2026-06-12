@@ -222,6 +222,9 @@ def cmd_content(args) -> int:
         state["source_precedence"] = acct["source_precedence"]
     if account and account.sitemap:
         state["sitemap"] = account.sitemap
+    cluster_map = inputs.get("cluster_map") or acct.get("cluster_map")
+    if cluster_map:
+        state["cluster_map"] = cluster_map
     graph = build_content_graph(checkpointer=sqlite_checkpointer(run_dir))
     config = {"configurable": {"thread_id": run_dir.name}, "recursion_limit": 100}
     try:

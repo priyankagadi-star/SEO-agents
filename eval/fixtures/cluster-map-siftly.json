@@ -1,0 +1,17 @@
+{
+  "pillar": {
+    "url": "https://siftly.ai/ai-visibility",
+    "intent": "ai visibility",
+    "keywords": ["ai visibility", "generative engine optimization", "geo"]
+  },
+  "spokes": [
+    {"url": "https://siftly.ai/chatgpt-visibility", "intent": "chatgpt visibility tracking",
+     "keywords": ["chatgpt visibility", "track chatgpt", "chatgpt citations"]},
+    {"url": "https://siftly.ai/brand-monitoring", "intent": "ai brand monitoring",
+     "keywords": ["brand monitoring", "monitor your brand", "citation share"]},
+    {"url": "https://siftly.ai/best-ai-visibility-tools", "intent": "best ai visibility tools",
+     "keywords": ["how to choose", "best tools", "tool comparison", "buyer's guide"]},
+    {"url": "https://siftly.ai/vs-social-listening", "intent": "ai monitoring vs social listening",
+     "keywords": ["vs social listening", "versus social listening", "social listening"]}
+  ]
+}

@@ -104,6 +104,9 @@ class ContentState(TypedDict):
     geo: NotRequired[str]
     constraints: NotRequired[dict]
     competitors: NotRequired[list[str]]
+    cluster_map: NotRequired[dict]                # site pillar/spoke topology (L−1 input)
+    page_intent: NotRequired[str]                 # the single intent THIS page owns
+    delegate_list: NotRequired[list[str]]         # sibling intents to link, not host
     failure_modes: NotRequired[list[str]]         # rebuild only (from diagnosis)
     keep_list: NotRequired[list[str]]             # rebuild only — MUST survive to output
     success_metric: NotRequired[dict]
