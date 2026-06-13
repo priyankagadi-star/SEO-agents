@@ -15,6 +15,9 @@ from llm import call_node
 
 def run(state: dict) -> dict:
     led = FactsLedger(list(state.get("facts_ledger", [])))
+    contract = state.get("intent_contract", {})
+    must_mirror = [q["term"] for q in contract.get("head_queries", [])
+                   if q.get("intent_type") in ("commercial", "transactional")]
     sections: dict[str, str] = {}
     covered: list[str] = []
     for sec in (state.get("outline") or {}).get("sections", []):
@@ -22,6 +25,7 @@ def run(state: dict) -> dict:
             "c11_section_drafter", "fast",
             section_spec=json.dumps(sec),
             brand_voice=json.dumps(state.get("brand_voice", {})),
+            must_mirror=json.dumps(must_mirror),
             ledger_markdown=led.to_markdown(),
         )
         sid = res.get("section_id") or sec.get("id")

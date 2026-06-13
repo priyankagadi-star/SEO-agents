@@ -76,6 +76,20 @@ def run(state: dict) -> dict:
                          "evidence": f"no cue for '{block.id}' in draft/outline",
                          "fix": f"Add a section covering '{block.label}'."})
 
+    # media gate (G6): a visual page type with zero images FAILS. SVG diagrams
+    # count; screenshots requested as [HUMAN] count; base64 never allowed.
+    _NEEDS_MEDIA = {"feature", "comparison", "guide", "listicle", "blog-listicle"}
+    if profile.page_type in _NEEDS_MEDIA and not manifest:
+        failures.append({"description": f"{profile.page_type} page has zero visual assets",
+                         "owning_step": "c15_media", "severity": "blocker",
+                         "evidence": "empty media_manifest",
+                         "fix": "Add at least one hosted SVG diagram or a [HUMAN] screenshot request."})
+    for item in manifest:
+        if str(item.get("filename", "")).startswith("data:"):
+            failures.append({"description": f"base64 image in manifest: {str(item.get('filename'))[:40]}",
+                             "owning_step": "c15_media", "severity": "blocker",
+                             "evidence": "data: URI", "fix": "Serve images as files, never base64."})
+
     blockers = [x for x in failures if x["severity"] == "blocker"]
     return {"render_report": {"verdict": "fail" if blockers else "pass",
                               "page_type": profile.page_type,

@@ -18,6 +18,7 @@ the design rationale.
 | W | multi-domain workspace layer (`workspaces.py`, `run.py account`, `--account`) | ✅ done — per-domain config/runs/GSC isolation; `gsc.mode: api` reserved for OAuth upgrade |
 | P | page-type structure contracts (`page_profiles.py`) | ✅ done — per-type required blocks + schema @types + budgets; enforced at c8 (brief seed/backfill), c9 (outline), c18 (schema), c20 (structure check, major). 80 tests green |
 | I | site-level intent boundary (`cluster_map.py`, `intent_boundary_check`) | ✅ done — L−1 "link, don't host": cluster_map (pillar/spokes) → c2 resolves page_intent + delegate_list + host/link verdicts; c9/c19 block sections owned by a sibling URL (deterministic, cluster-level sibling of fact_diff). Single-page mode when no map. 89 tests green |
+| V2 | intent governance (`intent.py`, `classify_intent`/`mirror_score`/`intent_fit_check`) | ✅ done — every page governed by an `intent_contract` (c2 builds it; audit a11 emits it on the Diagnosis). Audit: a4b Intent-Match Auditor + a10 intent buckets + Intent-Fit scorecard. Content L6: c19 enforces delivered-intent / H1-keyword / query-mirroring / delegated-links; c20 media gate (G6). **Governed only when cluster_map and/or GSC supplied** — single-page runs are no-ops. 109 tests green |
 
 ## Missing reference assets — [VERIFY-WITH-OWNER]
 BUILD-SPEC references files that were **not in this repository** at Phase 0.

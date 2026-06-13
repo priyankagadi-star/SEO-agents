@@ -192,6 +192,39 @@ A section is allowed when it covers the page's own intent or an intent this URL
 owns; a section whose intent another URL owns is a blocker to delegate. Novel,
 unowned intents are free to host — the gate constrains trespassing, not coverage.
 
+## 8c. Intent governance (v2: every page has an intent contract)
+
+The deepest quality lever is whether a page even *matches the intent* its buyers
+have — a commercial feature page that explains a concept ranks but never converts,
+and stuffing sibling intents cannibalizes the cluster. v2 governs this with one
+shared object and deterministic gates on both pipelines.
+
+- **`intent_contract`** (`intent.py`): page_type → primary_intent_type +
+  job_statement, owned vs delegated query classes (from the cluster_map), and the
+  page's own **GSC head queries** bucketed by `classify_intent`. Built by c2 in
+  content mode; **emitted onto the Diagnosis by audit a11** so the content pipeline
+  inherits it across the seam. `governed` is True only when a cluster_map and/or
+  GSC data is present — without them the page runs single-page and the intent
+  gates are no-ops (every legacy run is unchanged).
+- **New deterministic guardrails:** `classify_intent(query)` (commercial /
+  informational / transactional / navigational — lexical, the load-bearing
+  function), `mirror_score(copy, head_queries)` (fraction of commercial head
+  queries the copy mirrors), and `intent_fit_check(draft, contract, h1)` (delivered
+  intent must sell not explain · H1 carries the commercial keyword · mirror ≥ 60% ·
+  every delegated class is linked out).
+- **Audit (Pipeline A):** **a4b Intent-Match Auditor** classifies delivered intent
+  and head-query coverage; **a10** buckets GSC queries by intent type and surfaces
+  commercial striking-distance queries; **a11** adds Intent-Fit + head-query
+  mirroring to the scorecard and tags each off-intent defect fix-here vs delegate.
+- **Content (Pipeline B):** c7/c11 receive the contract + must-mirror buyer
+  vocabulary; **c19** runs `intent_fit_check` + `intent_boundary_check` as blockers
+  (route back to the owning layer); **c20** is the media gate — a visual page type
+  with zero assets fails (G6).
+
+This is the same philosophy as the rest of the spine: the model drafts, but
+deterministic, model-free functions decide fit — `classify_intent` and
+`mirror_score` are unit-tested and the gate produces its own pass/fail evidence.
+
 ## 8a. Page-type structure contracts
 
 `page_type` is not just a label — each type carries a **structure contract**

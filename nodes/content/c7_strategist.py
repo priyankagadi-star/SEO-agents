@@ -14,6 +14,8 @@ from llm import call_node
 
 def run(state: dict) -> dict:
     led = FactsLedger(list(state.get("facts_ledger", [])))
+    contract = state.get("intent_contract", {})
+    head_terms = [q["term"] for q in contract.get("head_queries", [])]
     out = call_node(
         "c7_strategist", "strong",
         mode=state["mode"],
@@ -24,6 +26,8 @@ def run(state: dict) -> dict:
         failure_modes=json.dumps(state.get("failure_modes", [])),
         usable_assets=json.dumps(state.get("brand_assets", {})),
         research_dossier=json.dumps(state.get("research_dossier", {})),
+        intent_contract=json.dumps(contract),
+        head_queries=json.dumps(head_terms),
         ledger_markdown=led.to_markdown(),
     )
     claims = list(out.get("claims", []))

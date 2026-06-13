@@ -249,6 +249,20 @@ Runs at c9 (outline) and c19 (re-check → route back). Falsy `cluster_map` ⇒ 
 Mandatory test (case 7): a brand-monitoring page with "how to choose" + "vs social listening"
 sections, against a cluster map where siblings own those intents → both flagged `intent_trespass`.
 
+**§6b — Intent governance (architecture v2).** Three new deterministic guardrails:
+`classify_intent(query) -> commercial|informational|transactional|navigational` (lexical, load-bearing);
+`mirror_score(copy, head_queries) -> 0..1` (fraction of commercial head queries the copy mirrors);
+`intent_fit_check(draft, intent_contract, h1) -> [Violation]` (delivered-intent must sell not explain,
+H1 carries the commercial keyword, mirror ≥ 0.6, every delegated class linked). New shared object
+`intent_contract` (`intent.py`): page_type→primary_intent_type+job_statement, owned/delegated query
+classes (from cluster_map), and GSC `head_queries` bucketed by intent. `governed` only when cluster_map
+and/or GSC present (else single-page no-op). Audit: a4b Intent-Match Auditor, a10 intent/striking-distance
+buckets, a11 emits the contract on the Diagnosis + adds Intent-Fit & head-query-mirroring to the scorecard.
+Content: c2 builds the contract, c7/c11 mirror buyer vocabulary, c19 enforces intent_fit + intent_boundary,
+c20 is the media gate (a visual page type with zero assets FAILS). Mandatory tests: (a) 'what is X'
+classifies informational and is delegated from a feature page; (b) a feature H1 lacking the commercial
+keyword fails Intent-Fit; (c) a sibling-owned section converts to a link; (d) mirror_score < 0.6 fails.
+
 `ledger.py`: class `FactsLedger` wrapping `list[Fact]` — `add(fact)` (append-only; adding an id that exists with a different value auto-creates a `conflict` entry instead of overwriting), `get(id)`, `supports_number(s)` (normalized numeric containment over verified facts), `to_markdown()`.
 **These functions are the product.** Write `tests/test_guardrails.py` FIRST with these mandatory cases (all from real failures in this project):
 1. `fact_diff` catches draft saying "nine AI engines" when ledger locks engines-count=4 → blocker.

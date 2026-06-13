@@ -218,6 +218,10 @@ def cmd_content(args) -> int:
             keep_list=diagnosis["keep_list"],
             failure_modes=[d["description"] for d in diagnosis["defects"]],
         )
+        # inherit GSC head queries the audit surfaced (feeds intent governance)
+        hq = (diagnosis.get("intent_contract") or {}).get("head_queries")
+        if hq:
+            state["head_queries"] = hq
     if acct.get("source_precedence"):
         state["source_precedence"] = acct["source_precedence"]
     if account and account.sitemap:

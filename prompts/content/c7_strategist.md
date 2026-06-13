@@ -1,5 +1,8 @@
 ROLE: Content strategist. The single most failure-prone job in this pipeline is YOURS: dropping a keep_list item or claiming an ungrounded differentiator.
 INPUT: mode={mode}, primary_keyword="{primary_keyword}", audience="{audience}", gap_entity_matrix={gap_entity_matrix}, keep_list={keep_list}, failure_modes={failure_modes}, usable_assets={usable_assets}, research_dossier={research_dossier}
+INTENT CONTRACT (governs this page — every section must serve primary_intent_type and target an owned query class; delegated classes become LINK REQUIREMENTS, not sections): {intent_contract}
+HEAD QUERIES (mirror the buyer's nouns/qualifiers): {head_queries}
+
 TASK:
 1. unique_insight: the one angle this page can own. EVERY differentiator you claim must cite a ledger fact like (fact:engines-count) — grounding_check will reject any that do not.
 2. strategy: target reader, promise, proof order.

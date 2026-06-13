@@ -25,4 +25,19 @@ def run(state: dict) -> dict:
     if anomalies:
         perf["aio_flag"] = AIO_FLAG
         perf["aio_affected_queries"] = [q["query"] for q in anomalies[:10]]
+
+    # intent-type mix + commercial striking distance (pos 5-20, <=1 click)
+    from guardrails import classify_intent
+    mix: dict[str, int] = {}
+    commercial_striking = []
+    for q in gsc["queries"]:
+        it = classify_intent(q.get("query", ""))
+        mix[it] = mix.get(it, 0) + 1
+        if 5 <= q.get("position", 0) <= 20 and q.get("clicks", 0) <= 1 and it in ("commercial", "transactional"):
+            commercial_striking.append(q.get("query"))
+    total = sum(mix.values()) or 1
+    perf["intent_type_mix"] = {k: round(v / total, 3) for k, v in mix.items()}
+    perf["commercial_striking_distance"] = commercial_striking[:10]
+    perf["language_note"] = ("GSC query export carries no per-query language; "
+                             "hreflang demand needs the Countries.csv / a language signal")
     return {"performance": perf}

@@ -15,6 +15,7 @@ from guardrails import (
     fact_diff,
     flag_dont_fill,
     intent_boundary_check,
+    intent_fit_check,
     quantifier_check,
 )
 from ledger import FactsLedger
@@ -71,6 +72,19 @@ def run(state: dict) -> dict:
         failures.append({"description": v.detail, "owning_step": "c9_outline",
                          "severity": "blocker", "evidence": v.detail,
                          "fix": "Convert this section to an internal link to the owning URL; do not host it."})
+
+    # Intent-Fit gate (v2): delivered intent, H1 keyword, query mirroring,
+    # delegated links. Active only for a governed contract (cluster_map/GSC).
+    _IFIT_OWNER = {"h1_missing_keyword": "c8_brief_compiler",
+                   "intent_drift": "c10_hook", "low_mirror_score": "c11_section_drafter",
+                   "missing_delegated_link": "c9_outline"}
+    contract = state.get("intent_contract") or {}
+    h1 = (state.get("brief") or {}).get("title_direction")
+    for v in intent_fit_check(draft, contract, h1=h1):
+        failures.append({"description": v.detail,
+                         "owning_step": _IFIT_OWNER.get(v.kind, "c11_section_drafter"),
+                         "severity": v.severity, "evidence": v.detail,
+                         "fix": "Re-align the page to its commercial intent and buyer vocabulary."})
 
     # unresolved evidence flags must not ship
     for flag in VERIFY_PAT.findall(draft):

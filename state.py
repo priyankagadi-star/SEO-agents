@@ -107,6 +107,8 @@ class ContentState(TypedDict):
     cluster_map: NotRequired[dict]                # site pillar/spoke topology (L−1 input)
     page_intent: NotRequired[str]                 # the single intent THIS page owns
     delegate_list: NotRequired[list[str]]         # sibling intents to link, not host
+    intent_contract: NotRequired[dict]            # v2: governs the page (c2 builds it)
+    head_queries: NotRequired[list[dict]]         # GSC head queries (term, intent_type, …)
     failure_modes: NotRequired[list[str]]         # rebuild only (from diagnosis)
     keep_list: NotRequired[list[str]]             # rebuild only — MUST survive to output
     success_metric: NotRequired[dict]
@@ -166,6 +168,8 @@ class AuditState(TypedDict):
     ux_findings: NotRequired[dict]
     a11y_findings: NotRequired[dict]
     performance: NotRequired[dict]
+    intent_findings: NotRequired[dict]            # from a4b Intent-Match Auditor
+    cluster_map: NotRequired[dict]                # optional site topology for the audit
     diagnosis: NotRequired[Diagnosis]
     master_report_md: NotRequired[str]
     # reducer channel: parallel analyzers each append their own runlog entry

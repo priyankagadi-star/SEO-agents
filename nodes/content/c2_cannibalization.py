@@ -52,16 +52,41 @@ def _intent_guard(state: dict) -> dict:
             "_intent": {"mode": "cluster", "host_vs_link": host_vs_link}}
 
 
+def _build_contract(state: dict, guard: dict) -> dict:
+    from intent import build_intent_contract
+    from page_profiles import get_profile
+    profile = get_profile(state.get("page_type"))
+    head_queries = state.get("head_queries") or (state.get("gsc") or {}).get("queries") or []
+    contract = build_intent_contract(
+        page_type=state.get("page_type", "feature"),
+        primary_keyword=state["primary_keyword"],
+        cluster_map=state.get("cluster_map"),
+        target_url=state.get("target_url", ""),
+        head_queries=head_queries,
+        required_template_sections=[b.label for b in profile.required_blocks()],
+    )
+    # canonical delegate_list = cluster siblings ∪ subtopic-level delegations
+    delegated = sorted(set(contract["delegated_query_classes"]) | set(guard["delegate_list"]))
+    return contract, delegated
+
+
 def run(state: dict) -> dict:
     guard = _intent_guard(state)
+    contract, delegate_list = _build_contract(state, guard)
+    page_intent = contract["page_intent"]
     intent_gr = {"check": "intent_guard", "mode": guard["_intent"]["mode"],
-                 "page_intent": guard["page_intent"],
-                 "delegate": guard["delegate_list"],
+                 "governed": contract["governed"],
+                 "page_intent": page_intent,
+                 "primary_intent_type": contract["primary_intent_type"],
+                 "delegate": delegate_list,
+                 "head_queries": len(contract["head_queries"]),
                  "host_vs_link": guard["_intent"]["host_vs_link"]}
+    owned = {"intent_contract": contract, "page_intent": page_intent,
+             "delegate_list": delegate_list}
 
     sitemap_url = state.get("sitemap")
     if not sitemap_url:
-        return {"page_intent": guard["page_intent"], "delegate_list": guard["delegate_list"],
+        return {**owned,
                 "_guardrails": [{"check": "cannibalization", "status": "not-checked",
                                  "note": "no sitemap configured for this account"}, intent_gr]}
 
@@ -72,7 +97,7 @@ def run(state: dict) -> dict:
             resp = client.get(sitemap_url)
         urls = re.findall(r"<loc>\s*([^<\s]+)\s*</loc>", resp.text)
     except Exception as e:  # degrade honestly, never fail the run on a sitemap hiccup
-        return {"page_intent": guard["page_intent"], "delegate_list": guard["delegate_list"],
+        return {**owned,
                 "_guardrails": [{"check": "cannibalization", "status": "not-checked",
                                  "note": f"sitemap fetch failed: {e}"}, intent_gr]}
 
@@ -87,8 +112,7 @@ def run(state: dict) -> dict:
             overlapping.append({"url": u, "overlap_reason": f"slug shares terms {sorted(shared)}",
                                 "recommendation": "differentiate"})
     return {
-        "page_intent": guard["page_intent"],
-        "delegate_list": guard["delegate_list"],
+        **owned,
         "_guardrails": [{"check": "cannibalization", "status": "checked",
                          "overlapping": overlapping,
                          "risk": "high" if len(overlapping) > 2 else

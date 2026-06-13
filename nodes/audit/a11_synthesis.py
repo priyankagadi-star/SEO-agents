@@ -92,11 +92,33 @@ def run(state: dict) -> dict:
                     "fix": f.get("fix") or "See evidence.",
                 })
 
+    # Intent-Fit + head-query mirroring on the scorecard (v2). Defects from a4b
+    # are tagged 'delegate' (off-intent) vs 'fix-here'.
+    intent = state.get("intent_findings") or {}
+    if isinstance(intent.get("score_0_2"), int):
+        scorecard["intent_fit"] = intent["score_0_2"]
+    if intent.get("head_query_coverage"):
+        commercial = [c for c in intent["head_query_coverage"] if c["intent_match"]]
+        mirrored = sum(1 for c in commercial if c["mirrored"])
+        share = (mirrored / len(commercial)) if commercial else 1.0
+        scorecard["head_query_mirroring"] = 2 if share >= 0.8 else (1 if share >= 0.5 else 0)
+    if intent.get("intent_match") == "drifted":
+        defects.append({"description": f"[intent/delivered] {intent.get('drift_reason', 'off-intent')}",
+                        "owning_step": "c7_strategist", "severity": "major",
+                        "fix": "Re-align the page to its commercial intent; delegate explainer content."})
+    for sec in intent.get("offintent_sections", []):
+        defects.append({"description": f"[intent/offintent_section] '{sec}' is not this page's intent",
+                        "owning_step": "c9_outline", "severity": "minor",
+                        "fix": "Delegate this section to the sibling URL that owns its intent (link, don't host)."})
+
     perf = state.get("performance") or {}
     root_causes = []
     zero_areas = [a for a, s in scorecard.items() if s == 0]
     if zero_areas:
         root_causes.append(f"systemic weakness in: {', '.join(zero_areas)}")
+    if intent.get("intent_match") == "drifted":
+        root_causes.append("page is written off-intent — it explains a concept where buyers "
+                           "expect a commercial answer")
     if any(d["owning_step"] == "c10_hook" for d in defects):
         root_causes.append("no extractable direct answer — engines have nothing clean to cite")
     if any(d["owning_step"] in ("c12_faq", "c18_schema") for d in defects):
@@ -120,6 +142,15 @@ def run(state: dict) -> dict:
         "root_causes": root_causes,
         "keep_list": keep_list,
     }
+    # Emit the intent_contract so the content pipeline inherits it (the seam grows)
+    from intent import build_intent_contract
+    diagnosis["intent_contract"] = build_intent_contract(
+        page_type=diagnosis["page_type"],
+        primary_keyword=diagnosis["primary_query"],
+        cluster_map=state.get("cluster_map"),
+        target_url=diagnosis["url"],
+        head_queries=(state.get("gsc") or {}).get("queries", []),
+    )
     validate_diagnosis(diagnosis)  # the seam contract, enforced at the source
 
     return {"diagnosis": diagnosis, "master_report_md": _report(diagnosis, state)}

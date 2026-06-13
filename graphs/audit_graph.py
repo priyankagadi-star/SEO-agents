@@ -13,12 +13,13 @@ from state import AuditState, validate_state
 
 AUDIT_NODES = [
     "a0_intake",
-    "a1_technical", "a2_onpage", "a3_content", "a4_geo", "a5_serp",
-    "a6_authority", "a7_eeat", "a8_ux", "a9_a11y_perf", "a10_analytics",
+    "a1_technical", "a2_onpage", "a3_content", "a4_geo", "a4b_intent_match",
+    "a5_serp", "a6_authority", "a7_eeat", "a8_ux", "a9_a11y_perf", "a10_analytics",
     "a11_synthesis",
 ]
 
-PARALLEL_ANALYZERS = AUDIT_NODES[1:11]  # a1..a10 fan out after a0
+# every analyzer except intake (a0) and synthesis (a11) fans out in parallel
+PARALLEL_ANALYZERS = [n for n in AUDIT_NODES if n not in ("a0_intake", "a11_synthesis")]
 
 
 def _load_node(node_id: str) -> Callable[[dict], dict]:
