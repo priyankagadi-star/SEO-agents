@@ -67,7 +67,11 @@ def get_client():
     global _CLIENT
     if _CLIENT is None:
         provider = _CONFIG.get("provider", "anthropic")
-        _CLIENT = AzureOpenAIClient() if provider == "azure_openai" else AnthropicClient()
+        _CLIENT = {
+            "azure_openai": AzureOpenAIClient,
+            "claude_code": ClaudeCodeClient,
+            "anthropic": AnthropicClient,
+        }.get(provider, AnthropicClient)()
     return _CLIENT
 
 
@@ -168,6 +172,62 @@ class AzureOpenAIClient:
         usage = data.get("usage", {})
         return text, {
             "model": f"azure:{deployment}",
+            "input_tokens": usage.get("input_tokens", 0),
+            "output_tokens": usage.get("output_tokens", 0),
+        }
+
+
+class ClaudeCodeClient:
+    """Run every model step through the local `claude` CLI (no API key).
+
+    Uses `claude -p --output-format json`, which authenticates with your Claude
+    Code login. Tools are disabled so each call is a pure JSON completion — the
+    model never touches the repo. The strong/fast tiers map to --model values
+    from config.yaml. Set CLAUDE_CODE_BIN to override the binary path.
+
+    `runner` is injectable for tests: callable(args, prompt) -> (stdout, returncode).
+    """
+
+    def __init__(self, models: dict | None = None, binary: str | None = None,
+                 timeout: int = 600, runner=None):
+        import os
+        self.models = models or _MODELS
+        self.binary = binary or os.environ.get("CLAUDE_CODE_BIN", "claude")
+        self.timeout = timeout
+        self._runner = runner
+
+    def complete(self, prompt: str, tier: str, node_id: str | None = None) -> tuple[str, dict]:
+        import json as _json
+        import shutil
+        import subprocess
+        model = self.models.get(tier, tier)
+        args = [self.binary, "-p", "--output-format", "json", "--model", model,
+                "--allowedTools", "",  # pure completion: no Bash/Edit/Write/Read
+                "--append-system-prompt",
+                "Return ONLY the JSON object the user's schema asks for — no prose, "
+                "no code fences, no tool use."]
+        if self._runner is not None:
+            stdout, rc, stderr = (*self._runner(args, prompt), "")[:3]
+        else:
+            if shutil.which(self.binary) is None:
+                raise RuntimeError(
+                    f"claude CLI '{self.binary}' not found. Install Claude Code and log in, "
+                    "set CLAUDE_CODE_BIN, or switch config.yaml provider to anthropic/azure_openai."
+                )
+            proc = subprocess.run(args, input=prompt, capture_output=True, text=True,
+                                  timeout=self.timeout)
+            stdout, rc, stderr = proc.stdout, proc.returncode, proc.stderr
+        if rc != 0:
+            raise RuntimeError(f"claude -p failed (rc={rc}): {stderr[:300] or stdout[:300]}")
+        try:
+            data = _json.loads(stdout)
+        except _json.JSONDecodeError as e:
+            raise RuntimeError(f"claude -p did not return JSON envelope: {e}: {stdout[:200]!r}") from e
+        if data.get("is_error"):
+            raise RuntimeError(f"claude -p returned an error: {str(data.get('result'))[:300]}")
+        usage = data.get("usage", {}) or {}
+        return data.get("result", ""), {
+            "model": f"claude-code:{model}",
             "input_tokens": usage.get("input_tokens", 0),
             "output_tokens": usage.get("output_tokens", 0),
         }

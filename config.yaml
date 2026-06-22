@@ -1,6 +1,8 @@
 models: {strong: claude-sonnet-4-6, fast: claude-haiku-4-5-20251001}
-# model provider: anthropic | azure_openai
-provider: azure_openai
+# model provider: anthropic | azure_openai | claude_code
+#   claude_code = shell out to the local `claude` CLI (no API key; uses your
+#   Claude Code login). Set CLAUDE_CODE_BIN to override the binary path.
+provider: claude_code
 azure_openai:
   # endpoint + key come from env: AZURE_OPENAI_ENDPOINT (the full Responses-API
   # URL incl. ?api-version=...) and AZURE_OPENAI_API_KEY — never from this file.

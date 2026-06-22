@@ -26,8 +26,12 @@ pytest          # 90+ tests pin the guardrail/ledger/state contracts
 
 | provider | env vars | tiers |
 |---|---|---|
+| `claude_code` | none — uses your local `claude` CLI login (`CLAUDE_CODE_BIN` to override path) | `models:` strong/fast → `--model` |
 | `anthropic` | `ANTHROPIC_API_KEY` | `models:` strong=Sonnet, fast=Haiku |
 | `azure_openai` | `AZURE_OPENAI_ENDPOINT` (full Responses-API URL incl. `?api-version=`), `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_DEPLOYMENT` (or per-tier names in `azure_openai.deployments`) | deployments play the strong/fast roles |
+
+`claude_code` is the default: every model step (strategist, drafters, critics) shells out to
+`claude -p --output-format json` with tools disabled — no API key, your Claude Code subscription.
 
 Keys never go in committed files. With `azure_openai`, update `pricing:` to your Azure rates or runlog cost figures will be wrong.
 

@@ -41,9 +41,11 @@ Ask the owner for them; do not invent substitutes:
 - Never build: auto-publish, CMS writes, fabricated reviews/aggregateRating,
   auto-resolution of source conflicts.
 - Models come from `config.yaml` (strong/fast tiers), never hard-coded in nodes.
-- Model provider is switchable (`config.yaml → provider`): `anthropic` (spec default)
-  or `azure_openai` (owner-requested adapter; tiers map to Azure deployments;
-  env: AZURE_OPENAI_ENDPOINT/_API_KEY/_DEPLOYMENT). Keys live in env, never in files.
+- Model provider is switchable (`config.yaml → provider`): `claude_code` (default;
+  shells to the local `claude -p` CLI, no API key, tools disabled — pure JSON
+  completions via your Claude Code login), `anthropic` (spec default; ANTHROPIC_API_KEY),
+  or `azure_openai` (tiers map to Azure deployments; env AZURE_OPENAI_ENDPOINT/_API_KEY/_DEPLOYMENT).
+  All three behind the injectable client in `llm.py`; `--fake` swaps a scripted client. Keys live in env, never in files.
 
 ## Commands
 ```
