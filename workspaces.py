@@ -70,6 +70,30 @@ BRAND_ASSETS_TEMPLATE = {
     "screenshots": [],
 }
 
+# The rich selling brief the strategist (c7) leans on. brand_assets stays the
+# permission-gated factual source for E-E-A-T; brand_profile is what lets the
+# page actually SELL. Everything optional — fill what you have.
+BRAND_PROFILE_TEMPLATE = {
+    "name": "",
+    "one_liner": "",
+    "category": "",
+    "value_props": [],
+    "features": [
+        # {"name": "", "what_it_does": "", "proof": "", "canonical_url": ""}
+    ],
+    "icp": {"who": "", "personas": [], "jobs_to_be_done": []},
+    "positioning": "",
+    "objections": [
+        # {"objection": "", "response": ""}
+    ],
+    "proof_points": [],
+    "competitors": [
+        # {"name": "", "how_we_differ": "", "url": ""}
+    ],
+    "pricing_notes": "",
+    "cta": "",
+}
+
 
 class WorkspaceError(Exception):
     """Configuration problem with an account — message says exactly what."""
@@ -101,6 +125,7 @@ class Account:
     gsc_mode: str = "export"
     gsc_dir: Path | None = None
     brand_assets: dict = field(default_factory=dict)
+    brand_profile: dict = field(default_factory=dict)  # rich selling brief
     cluster_map: dict = field(default_factory=dict)   # pillar/spoke topology (L−1)
 
     @property
@@ -121,6 +146,7 @@ class Account:
             "canonical_sources": list(self.canonical_sources),
             "source_precedence": list(self.source_precedence),
             "brand_assets": dict(self.brand_assets),
+            "brand_profile": dict(self.brand_profile),
             "cluster_map": dict(self.cluster_map),
         }
 
@@ -135,6 +161,7 @@ def add_account(domain: str) -> Path:
     (root / "runs").mkdir()
     (root / "account.yaml").write_text(ACCOUNT_TEMPLATE.format(domain=domain))
     (root / "brand_assets.json").write_text(json.dumps(BRAND_ASSETS_TEMPLATE, indent=2) + "\n")
+    (root / "brand_profile.json").write_text(json.dumps(BRAND_PROFILE_TEMPLATE, indent=2) + "\n")
     return root
 
 
@@ -170,13 +197,14 @@ def load_account(domain: str) -> Account:
             "use mode 'export' and drop GSC export files into the account's gsc/ folder"
         )
 
-    brand_assets: dict = {}
-    ba_path = root / "brand_assets.json"
-    if ba_path.exists():
+    def _load_json(name: str) -> dict:
+        p = root / name
+        if not p.exists():
+            return {}
         try:
-            brand_assets = json.loads(ba_path.read_text())
+            return json.loads(p.read_text())
         except json.JSONDecodeError as e:
-            raise WorkspaceError(f"{ba_path} is not valid JSON: {e}") from e
+            raise WorkspaceError(f"{p} is not valid JSON: {e}") from e
 
     return Account(
         domain=domain,
@@ -188,6 +216,7 @@ def load_account(domain: str) -> Account:
         sitemap=cfg.get("sitemap") or "",
         gsc_mode=gsc_mode,
         gsc_dir=root / (gsc_cfg.get("exports_dir") or "gsc"),
-        brand_assets=brand_assets,
+        brand_assets=_load_json("brand_assets.json"),
+        brand_profile=_load_json("brand_profile.json"),
         cluster_map=cfg.get("cluster_map") or {},
     )

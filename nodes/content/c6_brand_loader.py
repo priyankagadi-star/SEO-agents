@@ -30,6 +30,7 @@ def run(state: dict) -> dict:
     out = call_node(
         "c6_brand_loader", "fast",
         brand_assets=json.dumps(brand),
+        brand_profile=json.dumps(state.get("brand_profile") or {}),
         canonical_page_texts=json.dumps(state.get("canonical_source_texts") or {}),
         ledger_markdown=led.to_markdown(),
     )

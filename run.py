@@ -222,6 +222,9 @@ def cmd_content(args) -> int:
         hq = (diagnosis.get("intent_contract") or {}).get("head_queries")
         if hq:
             state["head_queries"] = hq
+    bp = inputs.get("brand_profile") or acct.get("brand_profile")
+    if bp:
+        state["brand_profile"] = bp
     if acct.get("source_precedence"):
         state["source_precedence"] = acct["source_precedence"]
     if account and account.sitemap:

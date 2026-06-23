@@ -19,6 +19,8 @@ _FORMAT_RULES = [
 def run(state: dict) -> dict:
     if state["mode"] != "net_new":
         return {}
+    # questions discovered by c3 (Semrush phrase_questions, real when keyed)
+    paa = (state.get("serp_analysis") or {}).get("paa", [])
     res = serp_search(state["primary_keyword"])
     stub = bool(res.get("stub"))
     titles = [r.get("title", "") for r in res.get("organic", [])]
@@ -32,7 +34,7 @@ def run(state: dict) -> dict:
     dominant = max(votes, key=votes.get) if votes else state.get("page_type", "feature")
 
     targets = []
-    if res.get("paa"):
+    if paa or res.get("paa"):
         targets.append("people_also_ask")
     if titles:
         targets.append("featured_snippet")
@@ -43,5 +45,5 @@ def run(state: dict) -> dict:
         "serp_analysis": {**(state.get("serp_analysis") or {}),
                           "dominant_format": dominant,
                           "format_votes": votes,
-                          "confidence": "stub" if stub else "live"},
+                          "paa_question_count": len(paa)},
     }

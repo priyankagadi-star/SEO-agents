@@ -97,6 +97,7 @@ class ContentState(TypedDict):
     brief: NotRequired[dict]
     research_dossier: dict                        # [HUMAN] may be {}
     brand_assets: dict                            # [HUMAN] {differentiators, testimonials, author, screenshots}
+    brand_profile: NotRequired[dict]              # rich selling brief (features, value props, ICP, objections…)
     unique_insight: NotRequired[str]
     cluster_context: NotRequired[dict]
     brand_voice: NotRequired[dict]

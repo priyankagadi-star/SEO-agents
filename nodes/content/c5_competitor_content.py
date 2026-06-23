@@ -19,11 +19,35 @@ def _title_terms(title: str) -> list[str]:
 def run(state: dict) -> dict:
     if state["mode"] != "net_new":
         return {}
+    from tools.research import get_provider
+    research = get_provider().research(state["primary_keyword"])
+
+    gap = {"missing_entities": [], "missing_subtopics": [], "competitor_advantages": []}
+
+    # prefer real Semrush organic competitors (actual ranking URLs to fetch)
+    if not research.get("stub") and research.get("organic"):
+        from tools.fetch import fetch_rendered
+        competitors = [c["url"] for c in research["organic"][:5] if c.get("url")]
+        seen = set()
+        for url in competitors:
+            try:
+                page = fetch_rendered(url)
+            except Exception:
+                continue
+            for lvl, heading in page["headings"]:
+                if lvl in (2, 3) and heading.lower() not in seen:
+                    seen.add(heading.lower())
+                    gap["missing_subtopics"].append(heading)
+                    gap["competitor_advantages"].append({"source_url": url, "evidence": heading})
+        return {
+            "gap_entity_matrix": gap, "competitors": competitors,
+            "_guardrails": [{"check": "competitor_gaps", "confidence": "live",
+                             "source": "semrush", "note": f"fetched {len(competitors)} ranking pages"}],
+        }
+
     res = serp_search(state["primary_keyword"])
     stub = bool(res.get("stub"))
     organic = res.get("organic", [])[:5]
-
-    gap = {"missing_entities": [], "missing_subtopics": [], "competitor_advantages": []}
     competitors = [r.get("url", "") for r in organic if r.get("url")]
 
     if stub:

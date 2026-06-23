@@ -25,6 +25,7 @@ def run(state: dict) -> dict:
         keep_list=json.dumps(state.get("keep_list", [])),
         failure_modes=json.dumps(state.get("failure_modes", [])),
         usable_assets=json.dumps(state.get("brand_assets", {})),
+        brand_profile=json.dumps(state.get("brand_profile", {})),
         research_dossier=json.dumps(state.get("research_dossier", {})),
         intent_contract=json.dumps(contract),
         head_queries=json.dumps(head_terms),
