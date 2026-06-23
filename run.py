@@ -300,9 +300,10 @@ def cmd_account(args) -> int:
     try:
         if args.action == "add":
             root = add_account(args.domain)
-            console.print(f"[green]account created → {root}[/green]")
-            console.print("Next: fill in account.yaml (canonical_sources, audience) "
-                          "and brand_assets.json; drop GSC exports into gsc/.")
+            console.print(f"[green]brand created → {root}[/green]")
+            console.print("Next: fill in account.yaml (canonical_sources, audience), "
+                          "brand_profile.json (the selling brief), and brand_assets.json; "
+                          "drop GSC exports into gsc/.")
         elif args.action == "list":
             accounts = list_accounts()
             if not accounts:

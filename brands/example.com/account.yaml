@@ -1,0 +1,33 @@
+# Account configuration for example.com
+domain: example.com
+
+# Who this domain's content speaks to (used by the strategist + drafters)
+audience: ""
+
+# Pages that define ground truth for facts about this business.
+# Order them by trust: docs/feature pages before marketing pages.
+canonical_sources: []
+
+# Source classes in precedence order (used when canonical pages disagree)
+source_precedence: [owner, docs, feature_page, marketing, audit]
+
+# Optional: sitemap URL for cannibalization checks
+sitemap: ""
+
+# Google Search Console connection
+gsc:
+  mode: export          # "export" today; "api" (OAuth) is a future upgrade
+  exports_dir: gsc      # folder (inside this account) holding export ZIPs/CSVs
+
+# Optional site cluster map (pillar + spokes). Lets the platform enforce
+# "link, don't host" at the outline gate so a page never trespasses on a
+# sibling's intent. Omit for single-page optimization.
+# cluster_map:
+#   pillar:
+#     url: "https://example.com/topic"
+#     intent: "topic"
+#     keywords: ["topic"]
+#   spokes:
+#     - url: "https://example.com/topic/subtopic"
+#       intent: "subtopic"
+#       keywords: ["subtopic phrase", "another signal"]

@@ -100,8 +100,11 @@ class WorkspaceError(Exception):
 
 
 def workspaces_dir() -> Path:
-    # env override so tests run in tmp dirs and deployments can relocate data
-    return Path(os.environ.get("SEO_WORKSPACES_DIR", "workspaces"))
+    # per-brand data lives under brands/<domain>/. Env overrides for tests/deploys
+    # (SEO_WORKSPACES_DIR kept for back-compat).
+    return Path(os.environ.get("SEO_BRANDS_DIR")
+                or os.environ.get("SEO_WORKSPACES_DIR")
+                or "brands")
 
 
 def _validate_domain(domain: str) -> str:
