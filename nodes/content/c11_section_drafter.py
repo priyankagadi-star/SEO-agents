@@ -28,9 +28,12 @@ def run(state: dict) -> dict:
             must_mirror=json.dumps(must_mirror),
             ledger_markdown=led.to_markdown(),
         )
+        if not isinstance(res, dict):
+            res = {}
         sid = res.get("section_id") or sec.get("id")
-        sections[sid] = res.get("body_md", "")
-        covered += res.get("entities_covered", [])
+        body = res.get("body_md") or res.get("body") or res.get("content") or res.get("markdown") or ""
+        sections[sid] = body
+        covered += res.get("entities_covered", []) if isinstance(res.get("entities_covered"), list) else []
 
     violations = []
     for body in sections.values():

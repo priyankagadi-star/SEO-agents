@@ -39,10 +39,17 @@ def run(state: dict) -> dict:
         ledger_markdown=led.to_markdown(),
     )
     brief = out.get("brief", out)
+    if not isinstance(brief, dict):   # real models sometimes return a list/string
+        brief = {"structure": brief if isinstance(brief, list) else []}
 
     # CONTRACT: the brief's structure must contain every required block for this
     # page type. Merge the model's structure with the profile, model order first.
-    model_structure = brief.get("structure") or []
+    # structure items may come back as strings or dicts — normalize to dicts
+    raw_structure = brief.get("structure") or []
+    if not isinstance(raw_structure, list):
+        raw_structure = []
+    model_structure = [{"intent": s} if isinstance(s, str) else s
+                       for s in raw_structure if isinstance(s, (str, dict))]
     have = {str(s.get("id") or s.get("intent", "")).lower() for s in model_structure}
     merged = list(model_structure)
     for b in profile.required_blocks():
