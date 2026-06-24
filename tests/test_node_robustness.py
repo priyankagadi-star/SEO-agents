@@ -92,3 +92,37 @@ def test_brand_facts_seed_engine_count():
         {"how_it_works_verified": {"engines_count": 9, "engines": ["ChatGPT", "Groq"]}}, {})
     ec = next(f for f in facts if f["id"] == "engines-count")
     assert ec["status"] == "verified" and ec["value"].startswith("9") and ec.get("claim_pattern")
+
+
+def test_c22_byline_and_last_updated_in_every_package():
+    """E-E-A-T: every page must carry author + last-updated (or surface a checkpoint)."""
+    import nodes.content.c22_packager as c22
+    out = c22.run({
+        "primary_keyword": "ai prompt analytics", "brief": {"title_direction": "X", "meta_direction": "Y"},
+        "draft": "body", "schema_jsonld": {"@graph": [{"@type": "WebPage", "name": "X", "url": "/x"}]},
+        "brand_assets": {"author": {"name": "Chalam PVS", "title": "Founder", "company": "Siftly"}},
+        "human_checkpoints": [], "verify_list": [], "_runlog": [],
+    })
+    pkg = out["package_out"]
+    assert pkg["byline"]["name"] == "Chalam PVS"
+    assert pkg["byline_line"].startswith("Written by Chalam PVS · Founder · Siftly · Last updated")
+    assert pkg["last_updated"]                 # "24 June 2026"
+    # E-E-A-T schema: author + dateModified inside the JSON-LD page entity
+    page_node = pkg["schema_jsonld"]["@graph"][0]
+    assert page_node["author"]["name"] == "Chalam PVS"
+    assert page_node["dateModified"]           # ISO date
+
+
+def test_c22_missing_author_surfaces_checkpoint_not_fakes_one():
+    """No author in brand_assets → human checkpoint, never invented."""
+    import nodes.content.c22_packager as c22
+    out = c22.run({
+        "primary_keyword": "x", "brief": {}, "draft": "body",
+        "schema_jsonld": {"@graph": [{"@type": "WebPage"}]},
+        "brand_assets": {}, "human_checkpoints": [], "verify_list": [], "_runlog": [],
+    })
+    pkg = out["package_out"]
+    assert pkg["byline"] is None
+    assert any("no author" in h.lower() for h in pkg["human_checkpoints"])
+    # schema dateModified still set (freshness ≠ author)
+    assert pkg["schema_jsonld"]["@graph"][0]["dateModified"]
