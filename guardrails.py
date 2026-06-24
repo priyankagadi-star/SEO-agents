@@ -391,3 +391,90 @@ def intent_fit_check(draft, intent_contract, h1=None, head_queries=None,
                                   f"delegated class '{qclass}' must link to its owner {url} — not found in copy",
                                   severity="blocker"))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Content quality gates (closes the AI-smell gap surfaced in live runs)
+# ---------------------------------------------------------------------------
+
+# Phrases that scream "model-written" to both readers and AI-detection scorers.
+# Sourced from documented patterns in Helpful Content audits + observed Siftly run.
+AI_TELL_PAT = re.compile(
+    r"\b(delve into|in today'?s\s+(?:world|landscape|era)|in the era of|"
+    r"navigate(?:\s+the\s+complex)?|leverages?|unlock\s+the\s+power|"
+    r"at the heart of|ever[\s-]evolving|seamless(?:ly)?|"
+    r"strategic blind spot|flying blind|fundamentally|reshaping|"
+    r"transforms?\s+\w+\s+into|game[\s-]changing|cutting[\s-]edge|"
+    r"in conclusion|harnessing|paradigm shift|the world of|"
+    r"a\s+(?:new|brave)\s+(?:world|era)|in this article|"
+    r"operating without|stand[\s-]?out|robust\s+(?:solution|platform))\b", re.I)
+
+
+def ai_tell_check(text: str, threshold: int = 4) -> list[Violation]:
+    """Count common AI-tell phrases; >threshold ⇒ blocker (forces a rewrite)."""
+    hits = [m.group(0).lower() for m in AI_TELL_PAT.finditer(text or "")]
+    if not hits:
+        return []
+    counts = {}
+    for h in hits:
+        counts[h] = counts.get(h, 0) + 1
+    sev = "blocker" if len(hits) > threshold else "major"
+    return [Violation("ai_tells",
+                      f"{len(hits)} AI-tell phrase(s) — {dict(sorted(counts.items(), key=lambda x: -x[1])[:5])}",
+                      severity=sev)]
+
+
+def anaphora_check(text: str, max_bigram: int = 3, max_unigram: int = 6) -> list[Violation]:
+    """Sentence-opener repetition (AI-rhythm tell). Detects bigram openers
+    repeated more than max_bigram times, and high-risk unigram openers
+    ('you', 'we', 'our') above max_unigram."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if s.strip()]
+    counts_bi: dict[str, int] = {}
+    counts_uni = {"you": 0, "we": 0, "our": 0, "this": 0}
+    for s in sentences:
+        words = re.sub(r"^[#*\s]+", "", s).lower().split()
+        if not words:
+            continue
+        if words[0] in counts_uni:
+            counts_uni[words[0]] += 1
+        if len(words) >= 2:
+            bi = f"{words[0]} {words[1]}"
+            counts_bi[bi] = counts_bi.get(bi, 0) + 1
+    bad_bi = {k: v for k, v in counts_bi.items() if v > max_bigram}
+    bad_uni = {k: v for k, v in counts_uni.items() if v > max_unigram}
+    if not (bad_bi or bad_uni):
+        return []
+    detail = []
+    if bad_bi:
+        detail.append(f"bigrams: {dict(sorted(bad_bi.items(), key=lambda x: -x[1])[:3])}")
+    if bad_uni:
+        detail.append(f"unigrams: {bad_uni}")
+    return [Violation("anaphora", "repeated sentence-openers — " + "; ".join(detail),
+                      severity="major")]
+
+
+# competitor brand names that count as a named comparison (extend per-domain via state if needed)
+_NAMED_COMPETITORS = re.compile(
+    r"\b(Profound|Otterly|Bluefish|Brand24|Mention|SemRush|Ahrefs|Moz|"
+    r"BrightEdge|Conductor|Surfer|Frase|Clearscope|Jasper|Writesonic|"
+    r"ChatGPT|Gemini|Perplexity|Claude|Google|Microsoft|HubSpot|"
+    r"Salesforce|Search\s+Console|GA4|Analytics)\b", re.I)
+
+
+def vague_comparative_check(text: str) -> list[Violation]:
+    """'Most X tools / unlike others / traditional approaches' without a named
+    competitor or (fact:…) reference nearby = vague claim. Blocks the typical
+    'most AI visibility tools just track…' filler."""
+    out = []
+    pat = re.compile(r"\b(most|other|unlike|traditional)\s+"
+                      r"(?:ai\s+)?(?:visibility\s+)?"
+                      r"(tools?|platforms?|systems?|approaches?|solutions?|vendors?|services?)",
+                      re.I)
+    for m in pat.finditer(text or ""):
+        window = (text or "")[max(0, m.start() - 80): m.end() + 140]
+        if FACT_REF_PAT.search(window) or _NAMED_COMPETITORS.search(window):
+            continue
+        out.append(Violation("vague_comparative",
+                             f"'{m.group(0)}' with no named competitor or fact ref: …{window.strip()[:90]}…",
+                             severity="major"))
+    return out

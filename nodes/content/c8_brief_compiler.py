@@ -25,6 +25,19 @@ def run(state: dict) -> dict:
     wb = profile.word_budget
     required = [{"id": b.id, "intent": b.label} for b in profile.required_blocks()]
 
+    # Structural flexibility: the template is the FLOOR, not the ceiling.
+    # Surface candidate ADDITIONS from research so the strategist can extend
+    # the structure when competitor coverage or current trends call for it.
+    gap = state.get("gap_entity_matrix") or {}
+    template_blob = " ".join(b.label.lower() + " " + b.id.lower() for b in profile.required_blocks())
+    candidate_additions = [
+        s for s in (gap.get("missing_subtopics") or [])
+        if isinstance(s, str) and not any(w in template_blob for w in s.lower().split()[:2])
+    ][:8]
+    # owner-supplied "what's happening now" — brand_profile or inputs.json
+    trend_signals = (state.get("brand_profile") or {}).get("trend_signals") or \
+                    (state.get("research_dossier") or {}).get("trend_signals") or []
+
     out = call_node(
         "c8_brief_compiler", "fast",
         strategy=json.dumps(state.get("strategy", {})),
@@ -35,6 +48,8 @@ def run(state: dict) -> dict:
         serp_feature_targets=json.dumps(state.get("serp_feature_targets") or list(profile.serp_targets)),
         gap_entity_matrix=json.dumps(state.get("gap_entity_matrix", {})),
         required_blocks=json.dumps(required),
+        candidate_additions=json.dumps(candidate_additions),
+        trend_signals=json.dumps(trend_signals),
         schema_types=json.dumps(list(profile.schema_types)),
         ledger_markdown=led.to_markdown(),
     )

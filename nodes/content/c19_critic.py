@@ -12,11 +12,14 @@ import re
 
 from guardrails import (
     VERIFY_PAT,
+    ai_tell_check,
+    anaphora_check,
     fact_diff,
     flag_dont_fill,
     intent_boundary_check,
     intent_fit_check,
     quantifier_check,
+    vague_comparative_check,
 )
 from ledger import FactsLedger
 
@@ -85,6 +88,21 @@ def run(state: dict) -> dict:
                          "owning_step": _IFIT_OWNER.get(v.kind, "c11_section_drafter"),
                          "severity": v.severity, "evidence": v.detail,
                          "fix": "Re-align the page to its commercial intent and buyer vocabulary."})
+
+    # Content-quality gates: AI-tells, anaphora, vague comparisons
+    # (closes the AI-smell gap surfaced in live Siftly runs)
+    for v in ai_tell_check(draft):
+        failures.append({"description": v.detail, "owning_step": "c11_section_drafter",
+                         "severity": v.severity, "evidence": v.detail,
+                         "fix": "Rewrite without AI-tell phrases ('fundamentally', 'reshaping', 'leverages', etc.)."})
+    for v in anaphora_check(draft):
+        failures.append({"description": v.detail, "owning_step": "c11_section_drafter",
+                         "severity": v.severity, "evidence": v.detail,
+                         "fix": "Vary sentence openers; do not start ≥4 sentences with the same word/bigram."})
+    for v in vague_comparative_check(draft):
+        failures.append({"description": v.detail, "owning_step": "c7_strategist",
+                         "severity": v.severity, "evidence": v.detail,
+                         "fix": "Name the competitor or cite a verified fact; no 'most tools' / 'unlike others' filler."})
 
     # unresolved evidence flags must not ship
     for flag in VERIFY_PAT.findall(draft):
