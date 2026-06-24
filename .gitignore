@@ -21,3 +21,4 @@ brands/*/brand_assets.json
 !brands/example.com/account.yaml
 !brands/example.com/brand_profile.json
 !brands/example.com/brand_assets.json
+brands/*/inputs/

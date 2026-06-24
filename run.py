@@ -225,6 +225,15 @@ def cmd_content(args) -> int:
     bp = inputs.get("brand_profile") or acct.get("brand_profile")
     if bp:
         state["brand_profile"] = bp
+    # GSC head queries (real buyer vocabulary) — from --gsc or the brand's gsc/ folder
+    gsc_path = args.gsc or (str(p) if account and (p := account.latest_gsc_export()) else None)
+    if gsc_path and not state.get("head_queries"):
+        from tools.gsc import parse_gsc_export
+        try:
+            state["head_queries"] = parse_gsc_export(gsc_path).get("queries", [])
+            console.print(f"[dim]loaded {len(state['head_queries'])} GSC queries from {Path(gsc_path).name}[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]could not parse GSC export {gsc_path}: {e}[/yellow]")
     if acct.get("source_precedence"):
         state["source_precedence"] = acct["source_precedence"]
     if account and account.sitemap:
@@ -345,6 +354,7 @@ def main(argv=None) -> int:
     p_content.add_argument("--mode", choices=["rebuild", "net_new"])
     p_content.add_argument("--account", help="workspace domain to run under (fills canonical sources, brand assets, audience)")
     p_content.add_argument("--diagnosis")
+    p_content.add_argument("--gsc", help="GSC export (zip/csv) → head queries for vocabulary mirroring")
     p_content.add_argument("--inputs")
     p_content.add_argument("--out")
     p_content.add_argument("--fake", action="store_true",
