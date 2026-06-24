@@ -203,6 +203,8 @@ class ClaudeCodeClient:
         model = self.models.get(tier, tier)
         args = [self.binary, "-p", "--output-format", "json", "--model", model,
                 "--allowedTools", "",  # pure completion: no Bash/Edit/Write/Read
+                "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',  # skip session MCP servers (faster startup)
+                "--setting-sources", "",                      # ignore project/user settings/CLAUDE.md
                 "--append-system-prompt",
                 "Return ONLY the JSON object the user's schema asks for — no prose, "
                 "no code fences, no tool use."]
