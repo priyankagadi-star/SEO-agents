@@ -18,6 +18,11 @@ _VERDICT_MAP = {"verified": "verified", "conflict": "conflict", "unverified": "V
 
 def run(state: dict) -> dict:
     led = FactsLedger(list(state.get("facts_ledger", [])))
+    # seed owner-asserted brand facts as verified (so writers can cite them
+    # instead of flagging [VERIFY] for everything the brand already documents)
+    from brand_facts import facts_from_brand
+    for f in facts_from_brand(state.get("brand_profile") or {}, state.get("brand_assets") or {}):
+        led.add(f)
     rd = state.get("research_dossier") or {}
     claims = list(state.get("failure_modes") or [])
     claims += [str(x) for x in (state.get("keep_list") or [])]

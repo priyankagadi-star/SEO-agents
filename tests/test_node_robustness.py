@@ -70,3 +70,25 @@ def test_c15_media_plan_string_items():
     out = c15.run(state)  # must not crash on string media_plan items
     assert "media_manifest" in out
     assert any("screenshot" in h.lower() for h in out["human_checkpoints"])
+
+
+def test_c16_cuts_unverified_sentences_not_blocks():
+    import nodes.content.c16_editorial as c16
+    state = {"facts_ledger": [], "human_checkpoints": [],
+             "outline": {"sections": [{"id": "s1", "h2": "X"}]},
+             "lead": "Siftly tracks 9 AI engines. [VERIFY: customer count] customers trust us.",
+             "sections": {"s1": "It publishes to your CMS. We saved teams [VERIFY: hours] hours."},
+             "faq": [{"q": "How many engines?", "a": "Nine."}]}
+    out = c16.run(state)
+    assert "[VERIFY" not in out["draft"]                  # nothing unverified ships
+    assert "Siftly tracks 9 AI engines" in out["draft"]   # verified sentence kept
+    assert "It publishes to your CMS" in out["draft"]
+    assert any("cut from draft" in h for h in out["human_checkpoints"])  # surfaced, not lost
+
+
+def test_brand_facts_seed_engine_count():
+    from brand_facts import facts_from_brand
+    facts = facts_from_brand(
+        {"how_it_works_verified": {"engines_count": 9, "engines": ["ChatGPT", "Groq"]}}, {})
+    ec = next(f for f in facts if f["id"] == "engines-count")
+    assert ec["status"] == "verified" and ec["value"].startswith("9") and ec.get("claim_pattern")
