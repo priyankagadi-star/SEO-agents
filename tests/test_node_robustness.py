@@ -49,3 +49,24 @@ def test_c11_alternate_body_keys():
              "intent_contract": {}, "brand_voice": {}}
     out = run_with(c11, "c11_section_drafter", {"section_id": "s1", "content": "Body via 'content' key."}, state)
     assert out["sections"]["s1"] == "Body via 'content' key."
+
+
+def test_c12_faq_normalizes_shapes():
+    import nodes.content.c12_faq as c12
+    state = {"facts_ledger": [], "outline": {"sections": []}, "primary_keyword": "x", "serp_analysis": {}}
+    # dict-map form {question: answer}
+    out = run_with(c12, "c12_faq", {"faq": {"What is it?": "A thing."}}, state)
+    assert out["faq"] == [{"q": "What is it?", "a": "A thing."}]
+    # question/answer keys + nested acceptedAnswer
+    out = run_with(c12, "c12_faq", {"faq": [{"question": "Q1", "answer": "A1"},
+                                            {"name": "Q2", "acceptedAnswer": {"text": "A2"}}]}, state)
+    assert {"q": "Q1", "a": "A1"} in out["faq"] and {"q": "Q2", "a": "A2"} in out["faq"]
+
+
+def test_c15_media_plan_string_items():
+    import nodes.content.c15_media as c15
+    state = {"primary_keyword": "ai prompt analytics", "outline": {"sections": [{"id": "s1", "h2": "X"}]},
+             "brief": {"media_plan": ["a product screenshot", "a diagram"]}, "brand_assets": {}, "human_checkpoints": []}
+    out = c15.run(state)  # must not crash on string media_plan items
+    assert "media_manifest" in out
+    assert any("screenshot" in h.lower() for h in out["human_checkpoints"])

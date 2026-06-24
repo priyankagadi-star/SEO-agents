@@ -58,9 +58,10 @@ def run(state: dict) -> dict:
             "type": "svg",
         })
 
-    # planned items we cannot draw (screenshots) -> human checkpoints, never faked
+    # planned items we cannot draw (screenshots) -> human checkpoints, never faked.
+    # media_plan items may be dicts or plain strings depending on the model.
     for item in brief_media:
-        kind = str(item.get("type", item)).lower()
+        kind = str(item.get("type", item) if isinstance(item, dict) else item).lower()
         if "screenshot" in kind or "photo" in kind:
             hc.append(f"[HUMAN] supply real screenshot for media plan item: {item}")
         # diagrams beyond the overview would be added here the same way
