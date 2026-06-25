@@ -16,6 +16,10 @@ state = json.loads((RUN / "state.json").read_text())
 pkg = json.loads((RUN / "package_out.json").read_text())
 inp = json.loads(Path("brands/siftly.ai/inputs/use-cases-saas.json").read_text())
 
+# brand_assets in state.json is frozen at pipeline time — reload the live file
+# so author credentials / screenshots / feature links added after the run apply.
+state["brand_assets"] = json.loads(Path("brands/siftly.ai/brand_assets.json").read_text())
+
 rd = inp["research_dossier"]
 H1 = rd["suggested_h1"]
 LEAD = rd["quotable_intro"]
@@ -39,16 +43,32 @@ TELL_SWAPS = [
     (r"before the competitive landscape hardens and your future presence is defined by algorithms you never measured or optimized for",
      "before competitors lock in the citations you can still win"),
     (r"\bsilently capturing\b", "capturing"),
+    # --- audit polish: AI-tell phrase + repeated "This" openers + vague comparative ---
+    (r"\btransform them into\b", "turn them into"),
+    (r"\bThis happens on a regular schedule\b", "It runs on a regular schedule"),
+    (r"\bThis content is purpose-built\b", "Each piece is purpose-built"),
+    (r"\bThis three-step cycle repeats\b", "The cycle repeats"),
+    (r"\bThis comprehensive coverage lets you\b", "That coverage shows you"),
+    (r"\bThis real buyer behavior data reveals\b", "Real buyer-behavior data reveals"),
+    (r"\bThis approach delivers regular\b", "The cadence delivers regular"),
+    (r"\bThis comprehensive measurement proves\b", "End-to-end measurement proves"),
+    (r"\bThis targeted optimization ensures\b", "That tuning helps ensure"),
+    (r"different from other AI visibility tools",
+     "different from tracking-only AI visibility tools"),
 ]
 
 def strip_facts(t: str) -> str:
     return FACT_RE.sub("", t)
 
-def clean(t: str) -> str:
+def apply_swaps(t: str) -> str:
+    """Fact-strip + AI-tell phrase swaps, preserving whitespace (for JSON blobs)."""
     t = strip_facts(t)
     for pat, rep in TELL_SWAPS:
         t = re.sub(pat, rep, t)
-    return re.sub(r"[ \t]{2,}", " ", t).strip()
+    return t
+
+def clean(t: str) -> str:
+    return re.sub(r"[ \t]{2,}", " ", apply_swaps(t)).strip()
 
 def esc(t: str) -> str:
     return _html.escape(t, quote=False)
@@ -131,8 +151,8 @@ trends_html = "\n".join(
     f'<div class="trend"><span class="trend-icon">↗</span><p>{esc(strip_facts(t))}</p></div>'
     for t in TRENDS)
 faq_html = "\n".join(
-    f"""<details><summary>{esc(strip_facts(f['q']))}</summary>
-  <div class="faq-a"><p>{md_inline(strip_facts(f['a']))}</p></div></details>"""
+    f"""<details><summary>{esc(clean(f['q']))}</summary>
+  <div class="faq-a"><p>{md_inline(clean(f['a']))}</p></div></details>"""
     for f in faq)
 
 steps_html = build_steps(sections["how_it_works"])
@@ -141,7 +161,44 @@ diff_html = section_html(sections["differentiators"])
 problem_html = section_html(sections["problem"])
 cta_line = clean(sections["cta"]).split("\n")[0]
 
-jsonld = strip_facts(json.dumps(pkg["schema_jsonld"], indent=2, ensure_ascii=False))
+# --- author bio block (E-E-A-T): grounded in brand_assets, no invented claims ---
+author = (state.get("brand_assets") or {}).get("author") or {}
+author_bio = author.get("bio", "")
+author_name = author.get("name", "")
+
+# --- product screenshot (dummy placeholder), inlined so the page is self-contained ---
+shots = (state.get("brand_assets") or {}).get("screenshots") or []
+product_fig = ""
+if shots:
+    shot = shots[0]
+    svg_path = RUN / shot["src"]
+    if svg_path.exists():
+        svg = svg_path.read_text()
+        note = " (placeholder mockup — swap with a real screenshot before publishing)" if shot.get("placeholder") else ""
+        product_fig = f"""
+<section class="band"><div class="wrap">
+  <div class="band-head center"><span class="kicker">See it in action</span>
+    <h2>One dashboard for your AI search visibility</h2></div>
+  <figure class="shot">{svg}
+    <figcaption>{esc(shot.get('caption') or shot.get('alt',''))}{note}</figcaption></figure>
+</div></section>"""
+
+# --- explore the platform: owner-supplied feature URLs as internal links ---
+feature_links = (state.get("brand_assets") or {}).get("feature_links") or []
+links_html = ""
+if feature_links:
+    cards = "\n".join(
+        f'<a class="plink" href="{esc(fl["url"])}">{esc(fl["label"])} <span>→</span></a>'
+        for fl in feature_links)
+    links_html = f"""
+<section class="band"><div class="wrap">
+  <div class="band-head center"><span class="kicker">Explore the platform</span>
+    <h2>Every capability, in depth</h2>
+    <p class="band-sub">Dig into the individual features behind Siftly's end-to-end GEO platform.</p></div>
+  <div class="plink-grid">{cards}</div>
+</div></section>"""
+
+jsonld = apply_swaps(json.dumps(pkg["schema_jsonld"], indent=2, ensure_ascii=False))
 CSS = (RUN.parent / "20260624T135700Z" / "page.html").read_text()
 CSS = CSS[CSS.index("<style>"):CSS.index("</style>") + len("</style>")]
 H1_HTML = md_inline(H1).replace("get cited", "<span class='grad'>get cited</span>")
@@ -155,7 +212,17 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 {jsonld}
 </script>
 {CSS}
-<style>.sub{{font-size:18px;margin:26px 0 8px;letter-spacing:-.01em}}</style>
+<style>.sub{{font-size:18px;margin:26px 0 8px;letter-spacing:-.01em}}
+.shot{{margin:0;border:1px solid var(--line);border-radius:18px;overflow:hidden;box-shadow:0 24px 60px rgba(11,16,32,.12);background:#fff}}
+.shot svg{{display:block;width:100%;height:auto}}
+.shot figcaption{{padding:14px 20px;font-size:13px;color:var(--muted);border-top:1px solid var(--line);background:var(--soft2)}}
+.plink-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}}
+.plink{{display:flex;justify-content:space-between;align-items:center;background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 22px;font-weight:600;color:var(--ink);transition:all .15s}}
+.plink:hover{{border-color:var(--accent);color:var(--accent);transform:translateY(-2px);box-shadow:0 10px 26px rgba(91,84,246,.12)}}
+.plink span{{color:var(--accent);font-weight:700}}
+.author-card{{display:flex;gap:18px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:24px 28px;max-width:680px;margin:0 auto}}
+.author-card .avatar{{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;flex:0 0 56px}}
+.author-card .meta{{font-size:14px;color:var(--muted)}}.author-card .meta strong{{color:var(--ink);font-size:15px}}</style>
 </head><body>
 <nav class="nav"><div class="wrap nav-inner">
   <div class="brand"><span class="brand-dot"></span>Siftly</div>
@@ -214,12 +281,13 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     <h2>{esc(outline[2]['h2'])}</h2></div>
   <div class="steps">{steps_html}</div>
 </div></section>
-
-<section class="band"><div class="wrap">
+{product_fig}
+<section class="band band-soft"><div class="wrap">
   <div class="band-head"><span class="kicker">Capabilities</span>
     <h2>{esc(outline[3]['h2'])}</h2></div>
   <div class="feat-grid">{feats_html}</div>
 </div></section>
+{links_html}
 
 <section class="band band-soft"><div class="wrap">
   <div class="band-head"><span class="kicker">Why Siftly</span>
@@ -237,6 +305,13 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
   <div class="band-head center"><span class="kicker">FAQ</span>
     <h2>Questions about AI search visibility</h2></div>
   {faq_html}
+</div></section>
+
+<section class="band"><div class="wrap">
+  <div class="author-card">
+    <span class="avatar">{esc(author_name[:1])}</span>
+    <div class="meta"><strong>{esc(author.get('byline') or BYLINE)}</strong><br>{esc(author_bio)}</div>
+  </div>
 </div></section>
 
 <section class="cta"><div class="wrap">
@@ -273,11 +348,20 @@ for sec in outline:
 md.append("## Frequently asked questions")
 md.append("")
 for f in faq:
-    md.append(f"**{strip_facts(f['q'])}**")
+    md.append(f"**{clean(f['q'])}**")
     md.append("")
-    md.append(strip_facts(f["a"]))
+    md.append(clean(f["a"]))
+    md.append("")
+if feature_links:
+    md.append("## Explore the platform")
+    md.append("")
+    for fl in feature_links:
+        md.append(f"- [{fl['label']}]({fl['url']})")
     md.append("")
 md.append("---")
+md.append("### About the author")
+md.append(f"{author.get('byline') or BYLINE}. {author_bio}")
+md.append("")
 md.append("### Proof")
 for r in reviews:
     name = r.get("author", {}).get("name", "")
