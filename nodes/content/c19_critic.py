@@ -9,6 +9,9 @@ guardrails are authoritative — they are the product.
 from __future__ import annotations
 
 import re
+from pathlib import Path
+
+import yaml
 
 from guardrails import (
     VERIFY_PAT,
@@ -16,12 +19,17 @@ from guardrails import (
     anaphora_check,
     fact_diff,
     flag_dont_fill,
+    information_gain_score,
     intent_boundary_check,
     intent_fit_check,
     quantifier_check,
     vague_comparative_check,
 )
 from ledger import FactsLedger
+from llm import client_is_scripted
+
+_CFG = yaml.safe_load((Path(__file__).parents[2] / "config.yaml").read_text())
+_GOAL = _CFG.get("goal", {}) or {}
 
 
 def run(state: dict) -> dict:
@@ -110,9 +118,57 @@ def run(state: dict) -> dict:
                          "owning_step": "c13_evidence", "severity": "blocker", "evidence": flag,
                          "fix": "Resolve or cut the flagged claim before publishing."})
 
+    # GOAL gate: Information-Gain Score. Form-clean pages can still be thin —
+    # this fails any page that scores < pass_score or misses a hard pre-condition
+    # (value density, sourced freshness, unresolved [VERIFY]). enforce flag in
+    # config decides whether the gate blocks (route-back) or is advisory-only.
+    enforce = bool(_GOAL.get("enforce_information_gain", False)) and not client_is_scripted()
+    pass_score = float(_GOAL.get("pass_score", 70))
+    brand_profile = state.get("brand_profile") or {}
+    brand_name = brand_profile.get("name") or "Siftly"
+    trends = (brand_profile.get("trend_signals")
+              or (state.get("research_dossier") or {}).get("trend_signals") or [])
+    owner_domains = []
+    for u in (state.get("canonical_sources") or []) + [state.get("target_url") or ""]:
+        m = re.search(r"https?://([a-z0-9.\-]+)", str(u), re.I)
+        if m:
+            owner_domains.append(m.group(1))
+    goal = information_gain_score(
+        draft, led,
+        author=(state.get("brand_assets") or {}).get("author"),
+        serp_entities=(state.get("serp_analysis") or {}).get("entities")
+        or (gap.get("entity_set") if isinstance(gap, dict) else None),
+        paa_questions=(state.get("serp_analysis") or {}).get("paa")
+        or (state.get("serp_analysis") or {}).get("questions"),
+        faq=state.get("faq"),
+        trend_signals=trends,
+        brand_names=[brand_name],
+        owner_domains=owner_domains,
+        word_budget=(state.get("brief") or {}).get("word_budget"),
+        threshold=pass_score,
+        enforce=enforce,
+    )
+    _GOAL_OWNER = {
+        "goal_information_gain": "c7_strategist",
+        "goal_precondition:distinct_value_density": "c11_section_drafter",
+        "goal_precondition:freshness_sourced_trend": "c8_brief_compiler",
+        "goal_precondition:no_unresolved_verify": "c13_evidence",
+    }
+    for v in goal.violations:
+        failures.append({"description": v.detail,
+                         "owning_step": _GOAL_OWNER.get(v.kind, "c7_strategist"),
+                         "severity": v.severity, "evidence": v.kind,
+                         "fix": "Add external citations, sourced data points, and concrete "
+                                "examples; cut padding and self-promotion to raise the score."})
+
     blockers = [f for f in failures if f["severity"] == "blocker"]
     verdict = "fail" if blockers else "pass"
     return {
-        "critic_report": {"verdict": verdict, "failures": failures, "blocker_count": len(blockers)},
-        "_guardrails": [{"check": "critic", "verdict": verdict, "failures": len(failures)}],
+        "critic_report": {"verdict": verdict, "failures": failures, "blocker_count": len(blockers),
+                          "information_gain": {"score": goal.score, "passed": goal.passed,
+                                               "threshold": goal.threshold,
+                                               "metrics": goal.metrics,
+                                               "preconditions": goal.preconditions}},
+        "_guardrails": [{"check": "critic", "verdict": verdict, "failures": len(failures),
+                         "information_gain_score": goal.score}],
     }

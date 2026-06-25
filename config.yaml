@@ -21,6 +21,11 @@ budgets: {max_cost_usd_per_page: 3.0, max_minutes_per_page: 15}
 ui_limits: {h1_chars: 60, meta_chars: 155, cta_words: 5}
 word_budget: {feature: [1400, 1800], blog-listicle: [1800, 2600], guide: [2000, 3200], comparison: [1500, 2200], glossary: [800, 1400], landing: [600, 1200]}
 rubric_pass_pct: 85
+# GOAL gate — Information-Gain Score (the measurable value of a page that earns
+# Google traffic). When enforce_information_gain is true, c19 fails any page
+# scoring < pass_score or missing a hard pre-condition (value density, sourced
+# freshness, zero unresolved [VERIFY]). Set false to score-only (advisory).
+goal: {enforce_information_gain: true, pass_score: 70}
 # SEO research provider for cold mode (c3/c4/c5). semrush uses the Analytics
 # HTTP API with env SEMRUSH_API_KEY (NOT the MCP server); no key ⇒ honest stub.
 research: {provider: semrush, semrush_database: us}

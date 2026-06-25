@@ -63,6 +63,15 @@ def reset_client() -> None:
     _CLIENT = None
 
 
+def client_is_scripted() -> bool:
+    """True when the active client is the scripted/fake client (--fake demo or
+    tests). Quality gates that need real research (e.g. the GOAL information-gain
+    gate) run in advisory mode on canned content — scripted drafts can't be
+    expected to clear an information-gain bar. Checked by class name to avoid a
+    circular import with fakes.py."""
+    return type(_CLIENT).__name__ == "ScriptedLLM"
+
+
 def get_client():
     global _CLIENT
     if _CLIENT is None:

@@ -6,7 +6,8 @@ behavior is pinned by tests/test_guardrails.py.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, field
 
 from ledger import extract_numbers, word_to_number
 
@@ -478,3 +479,259 @@ def vague_comparative_check(text: str) -> list[Violation]:
                              f"'{m.group(0)}' with no named competitor or fact ref: …{window.strip()[:90]}…",
                              severity="major"))
     return out
+
+
+# ===========================================================================
+# GOAL gate — Information-Gain Score (BUILD-SPEC: the measurable value of a
+# page that earns Google traffic). Deterministic; no model calls. The critic
+# (c19) computes this every run and, when enforce_information_gain is true,
+# fails any page that scores < threshold OR misses a hard pre-condition.
+# ===========================================================================
+
+_STOP = set("the a an and or of to in for on with is are be by your you we our it "
+            "that this as at from can will not no into out across over their they "
+            "them its his her these those than then so if but more most other".split())
+_URL = re.compile(r"https?://([a-z0-9.\-]+)", re.I)
+_DOMAIN_NOISE = {"schema.org", "www.w3.org", "w3.org", "example.com"}
+_EXAMPLE_MARKERS = re.compile(
+    r"\b(for example|for instance|such as|e\.g\.|imagine|consider|say you|"
+    r"when you|let's say|scenario|walkthrough|step \d|case study)\b", re.I)
+
+
+@dataclass
+class GoalReport:
+    score: float
+    passed: bool
+    threshold: float
+    metrics: dict = field(default_factory=dict)        # name -> {value, threshold, points, weight, ok}
+    preconditions: dict = field(default_factory=dict)  # name -> {ok, detail}
+    violations: list = field(default_factory=list)     # list[Violation]
+
+
+def _domains(text: str, owner: set[str]) -> set[str]:
+    return {d.lower() for d in _URL.findall(text or "")
+            if d.lower() not in owner and d.lower() not in _DOMAIN_NOISE}
+
+
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text or "") if len(s.split()) >= 4]
+
+
+def _content_tokens(text: str) -> list[str]:
+    # drop URLs first so link lists don't inflate density/repetition
+    t = re.sub(r"https?://\S+", " ", text or "")
+    t = re.sub(r"\(fact:[a-z0-9\-]+\)", " ", t, flags=re.I)
+    return [w.lower() for w in re.findall(r"[A-Za-z0-9']+", t)]
+
+
+def information_gain_score(
+    draft: str,
+    ledger,
+    *,
+    author: dict | None = None,
+    serp_entities: list | None = None,
+    paa_questions: list | None = None,
+    faq: list | None = None,
+    trend_signals: list | None = None,
+    brand_names: list | None = None,
+    owner_domains: list | None = None,
+    citations: list | None = None,
+    word_budget=None,
+    threshold: float = 70.0,
+    enforce: bool = True,
+) -> GoalReport:
+    """Composite 0–100 Information-Gain Score + hard pre-conditions.
+
+    All inputs are owner/run data; nothing is fetched. Count thresholds scale
+    with the page's word_budget midpoint vs the 1,500-word feature baseline.
+    """
+    text = draft or ""
+    toks = _content_tokens(text)
+    wc = max(1, len(toks))
+    sents = _sentences(re.sub(r"https?://\S+", " ", text))
+    owner = {d.lower() for d in (owner_domains or [])} | {"siftly.ai", "www.siftly.ai"}
+    brands = [b for b in (brand_names or []) if b]
+
+    # threshold scaling (count metrics only)
+    mid = 1500
+    if word_budget and isinstance(word_budget, (list, tuple)) and len(word_budget) == 2:
+        mid = (word_budget[0] + word_budget[1]) / 2
+    scale = max(0.6, mid / 1500.0)
+    def st(n):  # scaled count threshold
+        return max(1, round(n * scale))
+
+    metrics: dict = {}
+
+    def grade(key, value, thr, weight, *, ratio=None):
+        frac = min(1.0, (value / thr) if thr else 0.0) if ratio is None else min(1.0, ratio)
+        pts = round(weight * frac, 1)
+        metrics[key] = {"value": value, "threshold": thr, "weight": weight,
+                        "points": pts, "ok": frac >= 1.0}
+        return pts
+
+    total = 0.0
+
+    # 1. External authoritative citations (distinct non-owner domains) -------
+    doms = _domains(text, owner)
+    for c in (citations or []):
+        for d in _URL.findall(c or ""):
+            if d.lower() not in owner and d.lower() not in _DOMAIN_NOISE:
+                doms.add(d.lower())
+    # facts whose source is an external http URL also count as corroboration
+    for fid in set(FACT_REF_PAT.findall(text)):
+        f = ledger.get(fid) if hasattr(ledger, "get") else None
+        su = (f or {}).get("source_url", "") if f else ""
+        for d in _URL.findall(su or ""):
+            if d.lower() not in owner and d.lower() not in _DOMAIN_NOISE:
+                doms.add(d.lower())
+    total += grade("external_citations", len(doms), 3, 18)
+
+    # 2. Distinct sourced data points / statistics --------------------------
+    sourced = set()
+    for m in re.finditer(r"\d[\d,.]*\s*(?:%|x|×|#\d+|million|billion|engines|"
+                         r"members|customers|months?|weeks?)?", text, re.I):
+        frag = m.group(0).strip()
+        if not re.search(r"\d", frag):
+            continue
+        span = text[max(0, m.start() - 90): m.end() + 90]
+        if FACT_REF_PAT.search(span) or (hasattr(ledger, "supports_number")
+                                         and ledger.supports_number(frag)):
+            sourced.add(frag.lower())
+    total += grade("sourced_data_points", len(sourced), st(5), 16)
+
+    # 3. Original / proprietary data (owner benchmarks referenced in copy) ---
+    proprietary = 0
+    seen_p = set()
+    facts = ledger.facts if hasattr(ledger, "facts") else (ledger if isinstance(ledger, list) else [])
+    for f in facts:
+        fid = f.get("id", "")
+        if fid in seen_p:
+            continue
+        is_prop = fid.startswith("proof-") or fid.startswith("proprietary") or \
+            f.get("source_url") in ("study", "benchmark", "internal-data")
+        if is_prop and (f"(fact:{fid})" in text or _value_in_text(f, text)):
+            proprietary += 1
+            seen_p.add(fid)
+    total += grade("proprietary_data", proprietary, 2, 16)
+
+    # 4. Concrete examples / walkthroughs / scenarios -----------------------
+    examples = len(_EXAMPLE_MARKERS.findall(text))
+    examples += sum(1 for f in facts if f.get("id", "").startswith("proof-")
+                    and _value_in_text(f, text))
+    total += grade("concrete_examples", examples, st(3), 12)
+
+    # 5. Entity coverage vs live SERP entity set ----------------------------
+    if serp_entities:
+        ents = [str(e).lower() for e in serp_entities if str(e).strip()]
+        covered = sum(1 for e in ents if e in text.lower())
+        cov = covered / max(1, len(ents))
+        total += grade("entity_coverage", round(cov * 100), 80, 10, ratio=cov / 0.8)
+    else:
+        metrics["entity_coverage"] = {"value": None, "threshold": 80, "weight": 10,
+                                      "points": 0.0, "ok": False,
+                                      "note": "no live SERP entity set — not assessed"}
+
+    # 6. Real question coverage (answers actual PAA) ------------------------
+    faq = faq or []
+    if paa_questions:
+        paa = [_norm_q(q) for q in paa_questions]
+        fq = [_norm_q(x.get("q", "") if isinstance(x, dict) else x) for x in faq]
+        answered = sum(1 for p in paa if any(_q_overlap(p, q) for q in fq))
+        total += grade("question_coverage", answered, st(5), 8)
+        metrics["question_coverage"]["verified_paa"] = True
+    else:
+        total += grade("question_coverage", len(faq), st(5), 8)
+        metrics["question_coverage"]["verified_paa"] = False
+
+    # 7. Repetition ceiling (no 3-gram > 3×; keyword density ≤ 2.5%) --------
+    grams = Counter(tuple(toks[i:i + 3]) for i in range(len(toks) - 2))
+    worst = grams.most_common(1)[0] if grams else (None, 0)
+    cw = [t for t in toks if t not in _STOP and len(t) > 1]
+    dens = (Counter(cw).most_common(1)[0][1] / wc * 100) if cw else 0
+    rep_ok = worst[1] <= 3 and dens <= 2.5
+    metrics["repetition"] = {"value": f"3gram×{worst[1]}, density {dens:.1f}%",
+                             "threshold": "≤3×, ≤2.5%", "weight": 8,
+                             "points": 8.0 if rep_ok else 0.0, "ok": rep_ok,
+                             "worst_3gram": " ".join(worst[0]) if worst[0] else None}
+    total += metrics["repetition"]["points"]
+
+    # 8. Brand self-reference ratio (≤ 1 mention / 120 words) ---------------
+    bm = sum(len(re.findall(rf"\b{re.escape(b)}\b", text, re.I)) for b in brands) if brands else 0
+    ratio_words = wc / bm if bm else wc
+    brand_ok = ratio_words >= 120
+    metrics["brand_ratio"] = {"value": f"1 per {ratio_words:.0f}w ({bm} mentions)",
+                              "threshold": "1 per 120w", "weight": 6,
+                              "points": round(6 * min(1.0, ratio_words / 120), 1),
+                              "ok": brand_ok}
+    total += metrics["brand_ratio"]["points"]
+
+    # 9. Author E-E-A-T completeness ---------------------------------------
+    a = author or {}
+    have = [bool(a.get("name")), bool(a.get("credentials")),
+            bool(a.get("bio")), bool(a.get("linkedin") or a.get("link") or a.get("sameAs"))]
+    total += grade("author_eeat", sum(have), 4, 6)
+
+    score = round(total, 1)
+
+    # ---- hard pre-conditions (any miss = blocker, independent of score) ----
+    pre: dict = {}
+    val = sum(1 for s in sents if _carries_value(s))
+    dvd = val / max(1, len(sents))
+    pre["distinct_value_density"] = {"ok": dvd >= 0.60,
+                                     "detail": f"{val}/{len(sents)} = {dvd*100:.0f}% carry a fact/example (need ≥60%)"}
+    verify_n = len(VERIFY_PAT.findall(text))
+    pre["no_unresolved_verify"] = {"ok": verify_n == 0,
+                                   "detail": f"{verify_n} unresolved [VERIFY] in shipped copy"}
+    sourced_trend = any(_URL.search(str(t)) or "(source" in str(t).lower()
+                        or "according to" in str(t).lower() for t in (trend_signals or []))
+    pre["freshness_sourced_trend"] = {"ok": sourced_trend,
+                                      "detail": "≥1 current trend signal with a source"
+                                                if sourced_trend else "no sourced trend signal (trends are owner-asserted, no URL)"}
+
+    violations: list = []
+    sev = "blocker" if enforce else "major"
+    for name, p in pre.items():
+        if not p["ok"]:
+            violations.append(Violation(f"goal_precondition:{name}", p["detail"], severity=sev))
+    if score < threshold:
+        weak = sorted([(m, d) for m, d in metrics.items() if not d.get("ok")],
+                      key=lambda kv: kv[1]["weight"] - kv[1]["points"], reverse=True)
+        worst3 = ", ".join(f"{m} {d['points']}/{d['weight']}" for m, d in weak[:3])
+        violations.append(Violation("goal_information_gain",
+                                    f"Information-Gain Score {score}/100 < {threshold}. "
+                                    f"Biggest gaps: {worst3}.", severity=sev))
+
+    passed = score >= threshold and all(p["ok"] for p in pre.values())
+    return GoalReport(score=score, passed=passed, threshold=threshold,
+                      metrics=metrics, preconditions=pre, violations=violations)
+
+
+def _value_in_text(fact: dict, text: str) -> bool:
+    """A proprietary fact counts as 'used' if a salient token of its value appears."""
+    val = str(fact.get("value", ""))
+    # salient = capitalized names or numbers in the fact value
+    for tok in re.findall(r"\b[A-Z][A-Za-z]{2,}\b|#?\d+(?:\.\d+)?x?", val):
+        if len(tok) >= 3 and tok.lower() in text.lower():
+            return True
+    return False
+
+
+def _norm_q(q: str) -> set:
+    return {w for w in re.findall(r"[a-z]+", (q or "").lower()) if w not in _STOP and len(w) > 2}
+
+
+def _q_overlap(a: set, b: set) -> bool:
+    return bool(a and b and len(a & b) / max(1, min(len(a), len(b))) >= 0.5)
+
+
+_VALUE_SIGNAL = re.compile(
+    r"\d|#\d|%|\bvs\b|\bthan\b|—|:|"
+    r"ChatGPT|Gemini|Claude|Perplexity|Copilot|Groq|Google AI|"
+    r"for example|such as|like when|"
+    r"Domu|KIWABI|BROMO", re.I)
+
+
+def _carries_value(sentence: str) -> bool:
+    """A sentence carries distinct value if it states a fact, number, named
+    entity, example, or comparison — not a restatement/transition."""
+    return bool(_VALUE_SIGNAL.search(sentence or ""))
