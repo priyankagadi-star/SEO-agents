@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Generic production renderer: run_dir + inputs.json -> page.html + content.md.
+
+Data-driven (no per-page hardcoding): reads the pipeline's state/package, lays
+the sections out in outline order, auto-detecting step lists and capability
+cards, and renders byline + JSON-LD (with author sameAs) + sources + FAQ.
+Usage: python scripts/render_page.py <run_dir> <inputs.json>
+"""
+import html as _html
+import json
+import re
+import sys
+from pathlib import Path
+
+RUN = Path(sys.argv[1])
+INPUTS = Path(sys.argv[2])
+state = json.loads((RUN / "state.json").read_text())
+pkg = json.loads((RUN / "package_out.json").read_text())
+inp = json.loads(INPUTS.read_text())
+rd = inp.get("research_dossier", {})
+state["brand_assets"] = json.loads(Path("brands/siftly.ai/brand_assets.json").read_text())
+
+H1 = rd.get("suggested_h1") or pkg["title_variants"][0]
+LEAD = rd.get("quotable_intro") or pkg.get("meta", "")
+TITLE = (pkg["title_variants"][0] + " | Siftly")
+META = pkg.get("meta", "")
+BYLINE = pkg.get("byline_line") or ""
+CTA_LABEL = rd.get("primary_cta", "Book a demo")
+TRENDS = rd.get("trend_signals", [])
+sections = state.get("sections", {})
+outline = (state.get("outline") or {}).get("sections", [])
+faq = state.get("faq", [])
+author = (state.get("brand_assets") or {}).get("author") or {}
+
+FACT = re.compile(r"\s*\(fact:[a-z0-9\-]+\)", re.I)
+def strip_facts(t): return FACT.sub("", t or "")
+def esc(t): return _html.escape(strip_facts(t), quote=False)
+def md_inline(t): return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc(t))
+def blocks(t): return [b.strip() for b in re.split(r"\n\s*\n", strip_facts(t)) if b.strip()]
+
+def prose(body):
+    out = []
+    for b in blocks(body):
+        m = re.fullmatch(r"\*\*(.+?)\*\*", b)
+        out.append(f'<h3 class="sub">{md_inline(m.group(1))}</h3>' if m else f"<p>{md_inline(b)}</p>")
+    return "\n".join(out)
+
+def as_steps(body):
+    bl = blocks(body); pairs = []; i = 0
+    while i < len(bl):
+        m = re.fullmatch(r"\*\*(.+?)\*\*", bl[i])
+        if m and i + 1 < len(bl):
+            pairs.append((re.sub(r"^\d+[\.\)]\s*", "", m.group(1)), bl[i + 1])); i += 2
+        else: i += 1
+    if not pairs: return None
+    ic = ["🔍", "✍️", "📈", "🎯", "⚡", "🛠️"]
+    return '<div class="steps">' + "".join(
+        f'<div class="step"><div class="step-num">{n}</div><div class="step-ico">{ic[(n-1)%len(ic)]}</div>'
+        f'<h3>{md_inline(t)}</h3><p>{md_inline(d)}</p></div>' for n, (t, d) in enumerate(pairs, 1)) + "</div>"
+
+def as_feats(body):
+    cards = []; ic = ["📡", "🔗", "✍️", "💬", "📣", "🛒", "📊", "🎯"]
+    for b in blocks(body):
+        m = re.match(r"\*\*(.+?)\*\*\s*(.*)", b, re.S)
+        if not m: continue
+        cards.append((m.group(1).strip().rstrip("."), m.group(2).strip()))
+    if len(cards) < 3: return None
+    return '<div class="feat-grid">' + "".join(
+        f'<div class="feat"><div class="feat-ico">{ic[i%len(ic)]}</div><h3>{md_inline(t)}</h3><p>{md_inline(d)}</p></div>'
+        for i, (t, d) in enumerate(cards)) + "</div>"
+
+KICKERS = {"problem": "The problem", "how_it_works": "How it works", "capabilities": "What you get",
+           "differentiators": "Why Siftly", "proof": "Proof", "market_context": "Why now",
+           "cta": "Get started"}
+def render_section(sid, h2, body, soft):
+    inner = as_steps(body) or as_feats(body) or prose(body)
+    kick = KICKERS.get(sid, "")
+    kh = f'<span class="kicker">{esc(kick)}</span>' if kick else ""
+    cls = "band band-soft" if soft else "band"
+    return f'<section class="{cls}"><div class="wrap"><div class="band-head">{kh}<h2>{esc(h2)}</h2></div>{inner}</div></section>'
+
+# body sections (skip answer_first hero + faq + cta; rendered separately)
+body_html = []
+soft = False
+for s in outline:
+    sid = s.get("id");
+    if sid in ("answer_first", "faq", "cta") or sid not in sections:
+        continue
+    body_html.append(render_section(sid, s.get("h2", ""), sections[sid], soft))
+    soft = not soft
+body_html = "\n".join(body_html)
+
+# trend band
+trends_html = ""
+if TRENDS:
+    cards = "".join(f'<div class="trend"><span class="trend-icon">↗</span><p>{esc(t)}</p></div>' for t in TRENDS)
+    trends_html = f'<section class="trend-band"><div class="wrap"><div class="band-head"><span class="kicker">Why now</span><h2>The shift to AI search is measurable</h2></div><div class="trend-grid">{cards}</div></div></section>'
+
+# proof quotes from schema Reviews
+reviews = [b for b in pkg["schema_jsonld"].get("@graph", []) if b.get("@type") == "Review"]
+ORG = {"Manuel": ("Domu", "GTM"), "Emi": ("KIWABI", "Founder"), "Niigawa Kyouhei": ("BROMO", "CEO")}
+def quote(r):
+    n = r.get("author", {}).get("name", ""); org, role = ORG.get(n, ("", ""))
+    return (f'<figure class="quote"><div class="rating">★★★★★</div><blockquote>"{esc(r["reviewBody"])}"</blockquote>'
+            f'<figcaption><span class="avatar">{esc(n[:1])}</span><span><strong>{esc(n)}</strong><br>'
+            f'<span class="org">{esc(org)}</span> <span class="role">· {esc(role)}</span></span></figcaption></figure>')
+proof_html = ""
+if reviews:
+    proof_html = f'<section class="proof"><div class="wrap"><div class="band-head center"><span class="kicker">Proof</span><h2>Results teams have already seen</h2></div><div class="quotes">{"".join(quote(r) for r in reviews)}</div></div></section>'
+
+faq_html = "".join(f'<details><summary>{esc(f["q"])}</summary><div class="faq-a"><p>{md_inline(f["a"])}</p></div></details>' for f in faq)
+faq_sec = f'<section class="faq-band"><div class="wrap"><div class="band-head center"><span class="kicker">FAQ</span><h2>Questions about {esc(inp.get("seed_keyword",""))}</h2></div>{faq_html}</div></section>' if faq else ""
+
+sources = rd.get("external_sources", [])
+src_html = ""
+if sources:
+    items = "".join(f'<li><a href="{_html.escape(s["url"])}" rel="nofollow">{esc(s["name"])}</a></li>' for s in sources)
+    src_html = f'<section class="band band-soft"><div class="wrap"><div class="band-head center"><span class="kicker">Sources &amp; further reading</span><h2>What the field says about AI search</h2></div><ul class="sources">{items}</ul></div></section>'
+
+feature_links = (state.get("brand_assets") or {}).get("feature_links") or []
+links_html = ""
+if feature_links:
+    cards = "".join(f'<a class="plink" href="{_html.escape(fl["url"])}">{esc(fl["label"])} <span>→</span></a>' for fl in feature_links[:10])
+    links_html = f'<section class="band"><div class="wrap"><div class="band-head center"><span class="kicker">Explore the platform</span><h2>Every capability, in depth</h2></div><div class="plink-grid">{cards}</div></div></section>'
+
+# CTA section
+cta_sec = next((s for s in outline if s.get("id") == "cta"), None)
+cta_h2 = cta_sec.get("h2") if cta_sec else "Ready to win AI search?"
+cta_body = strip_facts(sections.get("cta", "")).split("\n")[0] if sections.get("cta") else LEAD
+
+# author bio + LinkedIn into schema
+lnk = author.get("linkedin")
+if lnk:
+    for b in pkg["schema_jsonld"].get("@graph", []):
+        if isinstance(b, dict) and isinstance(b.get("author"), dict):
+            b["author"]["sameAs"] = [lnk]
+jsonld = strip_facts(json.dumps(pkg["schema_jsonld"], indent=2, ensure_ascii=False))
+
+CSS = (Path("brands/siftly.ai/runs/20260624T135700Z/page.html").read_text())
+CSS = CSS[CSS.index("<style>"):CSS.index("</style>") + len("</style>")]
+grad = lambda h: re.sub(r"\b(AI|cited|visibility|recommended)\b", r"<span class='grad'>\1</span>", esc(h), count=1)
+lnk_html = f' · <a href="{_html.escape(lnk)}">LinkedIn</a>' if lnk else ""
+
+page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{esc(TITLE)}</title><meta name="description" content="{esc(META)}">
+<link rel="canonical" href="https://siftly.ai{rd.get('target_url','')}">
+<script type="application/ld+json">
+{jsonld}
+</script>{CSS}
+<style>.sub{{font-size:18px;margin:24px 0 8px}}.sources{{max-width:760px;margin:0 auto;padding-left:20px;line-height:2}}
+.plink-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}}
+.plink{{display:flex;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;font-weight:600;color:var(--ink)}}.plink:hover{{border-color:var(--accent);color:var(--accent)}}.plink span{{color:var(--accent)}}
+.author-card{{display:flex;gap:18px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:680px;margin:0 auto}}
+.author-card .avatar{{width:54px;height:54px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:20px;flex:0 0 54px}}</style>
+</head><body>
+<nav class="nav"><div class="wrap nav-inner"><div class="brand"><span class="brand-dot"></span>Siftly</div>
+<div class="nav-links"><a href="/answers">Product</a><a href="/use-cases">Use cases</a><a href="/guide/generative-engine-optimization">GEO Guide</a><a href="/pricing">Pricing</a></div>
+<a class="btn btn-primary" href="/demo">{esc(CTA_LABEL)}</a></div></nav>
+
+<header class="hero"><div class="wrap hero-grid"><div>
+<span class="eyebrow">Siftly · Feature</span>
+<h1 class="h-display">{grad(H1)}</h1>
+<p class="lead">{esc(LEAD)}</p>
+<div class="cta-row"><a class="btn btn-primary" href="/demo">{esc(CTA_LABEL)}</a>
+<a class="btn btn-ghost" href="/guide/generative-engine-optimization">Read the GEO guide</a></div>
+<p style="margin-top:22px;font-size:13px;color:var(--muted)">{esc(BYLINE)}</p></div>
+<div class="mock"><div class="mock-bar"><span></span><span></span><span></span></div><div class="mock-body">
+<div class="mock-title">AI visibility · across 9 engines</div>
+<div class="mock-row"><div><div class="q">ChatGPT</div><div class="meta">cited · rank #2</div></div><div class="rank up">▲ cited</div></div>
+<div class="mock-row"><div><div class="q">Perplexity</div><div class="meta">cited · 3 sources</div></div><div class="rank up">▲ cited</div></div>
+<div class="mock-row"><div><div class="q">Google AI Overviews</div><div class="meta">opportunity</div></div><div class="rank new">gap</div></div>
+</div></div></div></header>
+
+<section class="stats"><div class="wrap stats-grid">
+<div class="stat"><div class="num">9</div><div class="lbl">AI engines tracked</div></div>
+<div class="stat"><div class="num">#9</div><div class="lbl">Domu, in one month</div></div>
+<div class="stat"><div class="num">3.5×</div><div class="lbl">KIWABI ChatGPT revenue</div></div>
+<div class="stat"><div class="num">End-to-end</div><div class="lbl">Track → create → measure</div></div></div></section>
+
+{trends_html}
+{body_html}
+{links_html}
+{proof_html}
+{faq_sec}
+{src_html}
+<section class="band"><div class="wrap"><div class="author-card"><span class="avatar">{esc(author.get('name','?')[:1])}</span>
+<div class="meta"><strong>{esc(author.get('byline') or BYLINE)}</strong>{lnk_html}<br>{esc(author.get('bio',''))}</div></div></div></section>
+
+<section class="cta"><div class="wrap"><h2>{esc(cta_h2)}</h2><p>{esc(cta_body)}</p>
+<a class="btn btn-primary" href="/demo">{esc(CTA_LABEL)}</a></div></section>
+
+<footer><div class="wrap footer-grid"><div><div class="brand" style="margin-bottom:10px"><span class="brand-dot"></span>Siftly</div>
+<p>{esc(BYLINE)}</p></div><div><strong>Explore</strong><div class="footer-links">
+<code><a href="/answers">Product</a></code><code><a href="/pricing">Pricing</a></code><code><a href="/guide/generative-engine-optimization">GEO Guide</a></code></div></div></div></footer>
+</body></html>"""
+
+(RUN / "page.html").write_text(page)
+
+# clean markdown
+md = [f"# {H1}", "", f"*{BYLINE}*", "", strip_facts(LEAD), ""]
+for s in outline:
+    sid = s.get("id")
+    if sid in ("answer_first", "faq") or sid not in sections: continue
+    md += [f"## {s.get('h2','')}", "", strip_facts(sections[sid]), ""]
+if faq:
+    md += ["## Frequently asked questions", ""]
+    for f in faq: md += [f"**{strip_facts(f['q'])}**", "", strip_facts(f["a"]), ""]
+if sources:
+    md += ["## Sources & further reading", ""] + [f"- [{s['name']}]({s['url']})" for s in sources] + [""]
+(RUN / "content.md").write_text("\n".join(md))
+print("rendered", RUN / "page.html")

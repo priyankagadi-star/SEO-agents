@@ -122,7 +122,12 @@ def run(state: dict) -> dict:
     # this fails any page that scores < pass_score or misses a hard pre-condition
     # (value density, sourced freshness, unresolved [VERIFY]). enforce flag in
     # config decides whether the gate blocks (route-back) or is advisory-only.
-    enforce = bool(_GOAL.get("enforce_information_gain", False)) and not client_is_scripted()
+    # GOAL_ENFORCE env overrides config ("0"/"1") — lets a batch run advisory
+    # (every page completes + is scored) without editing committed config.
+    import os
+    _env = os.environ.get("GOAL_ENFORCE")
+    _cfg_enforce = bool(_GOAL.get("enforce_information_gain", False))
+    enforce = (_env == "1" if _env in ("0", "1") else _cfg_enforce) and not client_is_scripted()
     pass_score = float(_GOAL.get("pass_score", 70))
     brand_profile = state.get("brand_profile") or {}
     brand_name = brand_profile.get("name") or "Siftly"
