@@ -46,7 +46,7 @@ def run(state: dict) -> dict:
     real_questions = rd.get("real_questions") or []
 
     out = call_node(
-        "c8_brief_compiler", "fast",
+        "c8_brief_compiler", "strong",
         strategy=json.dumps(state.get("strategy", {})),
         unique_insight=state.get("unique_insight", ""),
         page_type=state.get("page_type", ""),

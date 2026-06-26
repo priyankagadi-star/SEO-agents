@@ -22,7 +22,7 @@ def run(state: dict) -> dict:
     covered: list[str] = []
     for sec in (state.get("outline") or {}).get("sections", []):
         res = call_node(
-            "c11_section_drafter", "fast",
+            "c11_section_drafter", "writer",
             section_spec=json.dumps(sec),
             brand_voice=json.dumps(state.get("brand_voice", {})),
             must_mirror=json.dumps(must_mirror),

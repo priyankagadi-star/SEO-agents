@@ -17,7 +17,7 @@ def run(state: dict) -> dict:
     paa = (rd.get("real_questions") or (state.get("brief") or {}).get("real_questions")
            or serp_paa)
     out = call_node(
-        "c12_faq", "fast",
+        "c12_faq", "writer",
         paa_questions=json.dumps(paa),
         outline_summary=json.dumps(outline_summary),
         primary_keyword=state["primary_keyword"],

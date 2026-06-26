@@ -1,4 +1,7 @@
-models: {strong: claude-sonnet-4-6, fast: claude-haiku-4-5-20251001}
+models: {strong: claude-sonnet-4-6, fast: claude-haiku-4-5-20251001, writer: claude-opus-4-8}
+# tiers: strong = reasoning/structure (strategy, facts, brief, outline);
+#        writer = reader-facing prose (hook, section drafts, FAQ) — best quality;
+#        fast = cheap utility steps. Nodes pick a tier; models are never hard-coded.
 # model provider: anthropic | azure_openai | claude_code
 #   claude_code = shell out to the local `claude` CLI (no API key; uses your
 #   Claude Code login). Set CLAUDE_CODE_BIN to override the binary path.
@@ -14,6 +17,7 @@ azure_openai:
 pricing:
   strong: {input_per_mtok: 3.00, output_per_mtok: 15.00}
   fast: {input_per_mtok: 1.00, output_per_mtok: 5.00}
+  writer: {input_per_mtok: 15.00, output_per_mtok: 75.00}
   # NOTE: the values above are Claude prices. On azure_openai, set them to your
   # Azure deployment prices or cost figures in the runlog will be wrong.
 route_back_cap: 2

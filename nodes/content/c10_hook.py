@@ -11,7 +11,7 @@ from llm import call_node
 def run(state: dict) -> dict:
     led = FactsLedger(list(state.get("facts_ledger", [])))
     out = call_node(
-        "c10_hook", "fast",
+        "c10_hook", "writer",
         primary_keyword=state["primary_keyword"],
         unique_insight=state.get("unique_insight", ""),
         audience=state.get("audience", ""),
