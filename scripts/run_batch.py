@@ -12,6 +12,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path.cwd()))  # repo root (not scripts/) for guardrails import
 ROOT = Path(".")
 BATCH = Path("brands/siftly.ai/inputs/batch")
 manifest = json.loads((BATCH / "_manifest.json").read_text())
@@ -41,11 +42,13 @@ for m in manifest:
     mrun = re.search(r"runs/(\d{8}T\d{6}Z)", out)
     new = sorted(latest_runs() - before)
     run_id = mrun.group(1) if mrun else (new[-1] if new else None)
-    if not run_id:
-        print("  FAILED — no run dir.", out[-400:], flush=True)
-        scorecard.append({"url": m["url"], "status": "ERROR", "log": out[-400:]})
+    run_dir = f"brands/siftly.ai/runs/{run_id}" if run_id else None
+    # a real success writes package_out.json — checkpoint-only means the run crashed
+    if not run_id or not Path(run_dir, "package_out.json").exists():
+        print(f"  FAILED (exit {r.returncode}) — no package_out.\n{out[-600:]}", flush=True)
+        scorecard = [s for s in scorecard if s.get("url") != m["url"]] + [
+            {"url": m["url"], "status": "ERROR", "exit": r.returncode, "log": out[-600:]}]
         SCORE.write_text(json.dumps(scorecard, indent=2)); continue
-    run_dir = f"brands/siftly.ai/runs/{run_id}"
     # render
     rr = subprocess.run([sys.executable, "scripts/render_page.py", run_dir, m["inputs"]],
                         capture_output=True, text=True)
