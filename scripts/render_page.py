@@ -33,7 +33,8 @@ faq = state.get("faq", [])
 author = (state.get("brand_assets") or {}).get("author") or {}
 
 FACT = re.compile(r"\s*\(fact:[a-z0-9\-]+\)", re.I)
-def strip_facts(t): return FACT.sub("", t or "")
+VERIFY = re.compile(r"\s*\[VERIFY[^\]]*\]")   # never render an unresolved flag
+def strip_facts(t): return VERIFY.sub("", FACT.sub("", t or ""))
 def esc(t): return _html.escape(strip_facts(t), quote=False)
 def md_inline(t): return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc(t))
 def blocks(t): return [b.strip() for b in re.split(r"\n\s*\n", strip_facts(t)) if b.strip()]

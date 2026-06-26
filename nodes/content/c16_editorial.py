@@ -7,23 +7,35 @@ from __future__ import annotations
 
 import re
 
-from guardrails import VERIFY_PAT
+from guardrails import FACT_REF_PAT, VERIFY_PAT
 from ledger import FactsLedger, extract_numbers
+
+_VERIFY_FULL = re.compile(r"\s*\[VERIFY[^\]]*\]")   # whole bracket, atomic
 
 
 def _cut_unverified(text: str, cut: list[str]) -> str:
-    """Drop sentences that still carry a [VERIFY] flag — never ship unverified
-    claims, but don't block the run either: the claim is cut and surfaced as a
-    human checkpoint. (Facts the brand documented are already in the ledger and
-    were asserted normally, so only genuine unknowns get here.)"""
+    """Never ship a [VERIFY] flag, but don't block the run either.
+
+    A [VERIFY] note can contain periods ("e.g. WordPress"), which would fool a
+    naive sentence split and let the bracket survive — so brackets are handled
+    atomically. Policy: if the sentence is otherwise grounded (carries a
+    (fact:id) ref), strip just the appended note and keep the claim; otherwise
+    the claim itself was the unknown — cut the whole sentence. A final pass
+    guarantees no residual bracket ships."""
+    # protect dots inside [VERIFY ...] so the splitter can't break a bracket
+    masked = _VERIFY_FULL.sub(lambda m: m.group(0).replace(".", "․"), text)
     kept = []
-    for sentence in re.split(r"(?<=[.!?])\s+", text):
+    for sentence in re.split(r"(?<=[.!?])\s+", masked):
+        sentence = sentence.replace("․", ".")
         flags = VERIFY_PAT.findall(sentence)
         if flags:
             cut.extend(flags)
-            continue
+            if FACT_REF_PAT.search(sentence):          # grounded sentence + a note
+                kept.append(_VERIFY_FULL.sub("", sentence).strip())
+            continue                                   # else drop the whole sentence
         kept.append(sentence)
-    return " ".join(s for s in kept if s.strip()).strip()
+    out = " ".join(s for s in kept if s.strip()).strip()
+    return _VERIFY_FULL.sub("", out).strip()           # safety net: no bracket ever ships
 
 
 def run(state: dict) -> dict:

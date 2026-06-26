@@ -86,6 +86,21 @@ def test_c16_cuts_unverified_sentences_not_blocks():
     assert any("cut from draft" in h for h in out["human_checkpoints"])  # surfaced, not lost
 
 
+def test_c16_strips_verify_note_with_internal_period_keeps_grounded_claim():
+    """A [VERIFY] note containing 'e.g.' must not survive via a bad sentence
+    split; a grounded sentence keeps its claim with the note stripped."""
+    import nodes.content.c16_editorial as c16
+    state = {"facts_ledger": [], "human_checkpoints": [],
+             "outline": {"sections": [{"id": "s1", "h2": "X"}]},
+             "lead": "Siftly publishes to your CMS (fact:generates) [VERIFY: platform names, e.g. WordPress/Webflow unresolved].",
+             "sections": {"s1": "We saved teams [VERIFY: hours] hours."}, "faq": []}
+    out = c16.run(state)
+    assert "[VERIFY" not in out["draft"]                       # nothing unverified ships
+    assert "Siftly publishes to your CMS" in out["draft"]      # grounded claim kept
+    assert "(fact:generates)" in out["draft"]
+    assert "We saved teams" not in out["draft"]                # ungrounded claim cut
+
+
 def test_brand_facts_seed_engine_count():
     from brand_facts import facts_from_brand
     facts = facts_from_brand(
