@@ -39,11 +39,29 @@ def esc(t): return _html.escape(strip_facts(t), quote=False)
 def md_inline(t): return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc(t))
 def blocks(t): return [b.strip() for b in re.split(r"\n\s*\n", strip_facts(t)) if b.strip()]
 
+def md_table(b):
+    """Convert a GitHub-style markdown table block to a styled HTML table."""
+    lines = [l for l in b.splitlines() if l.strip().startswith("|")]
+    if len(lines) < 2 or not re.match(r"^\s*\|[\s:|-]+\|\s*$", lines[1]):
+        return None
+    def cells(l): return [c.strip() for c in l.strip().strip("|").split("|")]
+    head = cells(lines[0]); rows = [cells(l) for l in lines[2:] if l.strip()]
+    th = "".join(f"<th>{md_inline(c)}</th>" for c in head)
+    tb = "".join("<tr>" + "".join(f"<td>{md_inline(c)}</td>" for c in r) + "</tr>" for r in rows)
+    return f'<table class="ctab"><thead><tr>{th}</tr></thead><tbody>{tb}</tbody></table>'
+
 def prose(body):
     out = []
     for b in blocks(body):
+        if b.lstrip().startswith("|") and (t := md_table(b)):
+            out.append(t); continue
         m = re.fullmatch(r"\*\*(.+?)\*\*", b)
-        out.append(f'<h3 class="sub">{md_inline(m.group(1))}</h3>' if m else f"<p>{md_inline(b)}</p>")
+        if m:
+            out.append(f'<h3 class="sub">{md_inline(m.group(1))}</h3>')
+        elif re.match(r"^#{2,6}\s+", b):                       # stray markdown header
+            out.append(f'<h3 class="sub">{md_inline(re.sub(r"^#{2,6}\\s+", "", b))}</h3>')
+        else:
+            out.append(f"<p>{md_inline(b)}</p>")
     return "\n".join(out)
 
 def as_steps(body):
@@ -223,6 +241,10 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 {jsonld}
 </script>{CSS}
 <style>.sub{{font-size:18px;margin:24px 0 8px}}.sources{{max-width:760px;margin:0 auto;padding-left:20px;line-height:2}}
+.ctab{{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}}
+.ctab th{{background:var(--ink);color:#fff;text-align:left;padding:11px 13px;font-size:12.5px}}
+.ctab td{{padding:11px 13px;border-top:1px solid var(--line);color:var(--ink2);vertical-align:top}}
+.ctab tr:nth-child(even) td{{background:var(--soft2)}}
 .plink-grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}}
 .plink{{display:flex;justify-content:space-between;background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 20px;font-weight:600;color:var(--ink)}}.plink:hover{{border-color:var(--accent);color:var(--accent)}}.plink span{{color:var(--accent)}}
 .author-card{{display:flex;gap:18px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:24px;max-width:680px;margin:0 auto}}
