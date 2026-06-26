@@ -198,6 +198,41 @@ if feature_links:
   <div class="plink-grid">{cards}</div>
 </div></section>"""
 
+# --- section lookup by id (outline order may shift as sections are added) ---
+_by_id = {s["id"]: s for s in outline}
+def H2(sid, default=""):
+    return _by_id.get(sid, {}).get("h2", default)
+
+# --- market context (real Semrush data + authoritative citations) ----------
+market_html = ""
+if sections.get("market_context"):
+    market_html = f"""
+<section class="band"><div class="wrap">
+  <div class="band-head"><span class="kicker">Why now</span>
+    <h2>{esc(H2('market_context', 'Why AI search is a measurable channel now'))}</h2></div>
+  {section_html(sections['market_context'])}
+</div></section>"""
+
+# --- sources & further reading: real external authoritative domains --------
+sources = state.get("sources") or []
+sources_html = ""
+if sources:
+    items = "\n".join(
+        f'<li><a href="{esc(s["url"])}" rel="nofollow">{esc(s["name"])}</a></li>'
+        for s in sources)
+    sources_html = f"""
+<section class="band band-soft"><div class="wrap">
+  <div class="band-head"><span class="kicker">Sources &amp; further reading</span>
+    <h2>What the field says about AI search</h2></div>
+  <ul class="sources">{items}</ul>
+</div></section>"""
+
+# inject the author's LinkedIn (sameAs) into the schema — added after the run
+_lnk = (state.get("brand_assets") or {}).get("author", {}).get("linkedin")
+if _lnk:
+    for _b in pkg["schema_jsonld"].get("@graph", []):
+        if isinstance(_b, dict) and isinstance(_b.get("author"), dict):
+            _b["author"]["sameAs"] = [_lnk]
 jsonld = apply_swaps(json.dumps(pkg["schema_jsonld"], indent=2, ensure_ascii=False))
 CSS = (RUN.parent / "20260624T135700Z" / "page.html").read_text()
 CSS = CSS[CSS.index("<style>"):CSS.index("</style>") + len("</style>")]
@@ -222,7 +257,8 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 .plink span{{color:var(--accent);font-weight:700}}
 .author-card{{display:flex;gap:18px;align-items:center;background:var(--soft);border:1px solid var(--line);border-radius:14px;padding:24px 28px;max-width:680px;margin:0 auto}}
 .author-card .avatar{{width:56px;height:56px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:22px;flex:0 0 56px}}
-.author-card .meta{{font-size:14px;color:var(--muted)}}.author-card .meta strong{{color:var(--ink);font-size:15px}}</style>
+.author-card .meta{{font-size:14px;color:var(--muted)}}.author-card .meta strong{{color:var(--ink);font-size:15px}}
+.sources{{max-width:760px;margin:0;padding-left:20px;line-height:2}}.sources li{{color:var(--ink2)}}.sources a{{font-weight:600}}</style>
 </head><body>
 <nav class="nav"><div class="wrap nav-inner">
   <div class="brand"><span class="brand-dot"></span>Siftly</div>
@@ -265,7 +301,7 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 
 <section class="band"><div class="wrap">
   <div class="band-head"><span class="kicker">The problem</span>
-    <h2>{esc(outline[1]['h2'])}</h2></div>
+    <h2>{esc(H2('problem'))}</h2></div>
   <div class="problem"><div class="problem-text">{problem_html}</div>
     <div class="problem-visual">
       <div class="gap-row"><span class="l">Ranks #1 on Google</span><span class="r ok">✓</span></div>
@@ -275,23 +311,23 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     </div>
   </div>
 </div></section>
-
+{market_html}
 <section class="band band-soft"><div class="wrap">
   <div class="band-head"><span class="kicker">How it works</span>
-    <h2>{esc(outline[2]['h2'])}</h2></div>
+    <h2>{esc(H2('how_it_works'))}</h2></div>
   <div class="steps">{steps_html}</div>
 </div></section>
 {product_fig}
 <section class="band band-soft"><div class="wrap">
   <div class="band-head"><span class="kicker">Capabilities</span>
-    <h2>{esc(outline[3]['h2'])}</h2></div>
+    <h2>{esc(H2('capabilities'))}</h2></div>
   <div class="feat-grid">{feats_html}</div>
 </div></section>
 {links_html}
 
 <section class="band band-soft"><div class="wrap">
   <div class="band-head"><span class="kicker">Why Siftly</span>
-    <h2>{esc(outline[4]['h2'])}</h2></div>
+    <h2>{esc(H2('differentiators'))}</h2></div>
   {diff_html}
 </div></section>
 
@@ -306,16 +342,16 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
     <h2>Questions about AI search visibility</h2></div>
   {faq_html}
 </div></section>
-
+{sources_html}
 <section class="band"><div class="wrap">
   <div class="author-card">
     <span class="avatar">{esc(author_name[:1])}</span>
-    <div class="meta"><strong>{esc(author.get('byline') or BYLINE)}</strong><br>{esc(author_bio)}</div>
+    <div class="meta"><strong>{esc(author.get('byline') or BYLINE)}</strong>{(' · <a href="' + esc(author.get('linkedin')) + '">LinkedIn</a>') if author.get('linkedin') else ''}<br>{esc(author_bio)}</div>
   </div>
 </div></section>
 
 <section class="cta"><div class="wrap">
-  <h2>{esc(outline[7]['h2'])}</h2>
+  <h2>{esc(H2('cta'))}</h2>
   <p>{esc(cta_line)}</p>
   <a class="btn btn-primary" href="/demo">{esc(CTA_LABEL)}</a>
 </div></section>

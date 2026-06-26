@@ -725,13 +725,23 @@ def _q_overlap(a: set, b: set) -> bool:
 
 
 _VALUE_SIGNAL = re.compile(
-    r"\d|#\d|%|\bvs\b|\bthan\b|—|:|"
-    r"ChatGPT|Gemini|Claude|Perplexity|Copilot|Groq|Google AI|"
-    r"for example|such as|like when|"
-    r"Domu|KIWABI|BROMO", re.I)
+    r"\d|#\d|%|\bvs\b|\bthan\b|\bunlike\b|—|"
+    r"\(fact:[a-z0-9\-]+\)|"                       # cites a verified fact => grounded claim
+    r"\bfor example\b|\bsuch as\b|\blike when\b|\bfor instance\b", re.I)
+# a multi-word proper noun ("Search Engine Land", "Google AI Overviews") names a
+# specific entity/source => information-bearing. Two+ consecutive Capitalized words,
+# not counting a single leading capital (sentence start).
+_PROPER_NOUN = re.compile(r"\b[A-Z][a-zA-Z]+\s+[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*")
 
 
 def _carries_value(sentence: str) -> bool:
-    """A sentence carries distinct value if it states a fact, number, named
-    entity, example, or comparison — not a restatement/transition."""
-    return bool(_VALUE_SIGNAL.search(sentence or ""))
+    """A sentence carries distinct value if it states a number/percentage,
+    cites a verified fact, names a specific entity/source, gives an example, or
+    draws a comparison — not a bare restatement/transition."""
+    s = sentence or ""
+    if _VALUE_SIGNAL.search(s):
+        return True
+    # drop the first token so a sentence-initial capital alone doesn't count;
+    # a real proper noun ("Search Engine Land") still has 2+ caps after that.
+    rest = s.split(" ", 1)[1] if " " in s else ""
+    return bool(_PROPER_NOUN.search(rest))
