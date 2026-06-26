@@ -84,7 +84,9 @@ body_html = []
 soft = False
 for s in outline:
     sid = s.get("id");
-    if sid in ("answer_first", "faq", "cta") or sid not in sections:
+    # skip hero, faq, cta (rendered separately) and proof (the dedicated
+    # testimonial-card section below renders it — avoid a duplicate Proof block)
+    if sid in ("answer_first", "faq", "cta", "proof") or sid not in sections:
         continue
     body_html.append(render_section(sid, s.get("h2", ""), sections[sid], soft))
     soft = not soft
@@ -106,7 +108,8 @@ def quote(r):
             f'<span class="org">{esc(org)}</span> <span class="role">· {esc(role)}</span></span></figcaption></figure>')
 proof_html = ""
 if reviews:
-    proof_html = f'<section class="proof"><div class="wrap"><div class="band-head center"><span class="kicker">Proof</span><h2>Results teams have already seen</h2></div><div class="quotes">{"".join(quote(r) for r in reviews)}</div></div></section>'
+    proof_h2 = next((s.get("h2") for s in outline if s.get("id") == "proof"), None) or "Results teams have already seen"
+    proof_html = f'<section class="proof"><div class="wrap"><div class="band-head center"><span class="kicker">Proof</span><h2>{esc(proof_h2)}</h2></div><div class="quotes">{"".join(quote(r) for r in reviews)}</div></div></section>'
 
 faq_html = "".join(f'<details><summary>{esc(f["q"])}</summary><div class="faq-a"><p>{md_inline(f["a"])}</p></div></details>' for f in faq)
 faq_sec = f'<section class="faq-band"><div class="wrap"><div class="band-head center"><span class="kicker">FAQ</span><h2>Questions about {esc(inp.get("seed_keyword",""))}</h2></div>{faq_html}</div></section>' if faq else ""
