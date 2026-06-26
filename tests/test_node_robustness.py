@@ -94,6 +94,16 @@ def test_brand_facts_seed_engine_count():
     assert ec["status"] == "verified" and ec["value"].startswith("9") and ec.get("claim_pattern")
 
 
+def test_c20_cta_as_dict_does_not_crash():
+    """Real models sometimes return brief.cta as a dict, not a string."""
+    import nodes.content.c20_render_critic as c20
+    out = c20.run({"facts_ledger": [], "draft": "Body copy.", "page_type": "feature",
+                   "outline": {"sections": []}, "media_manifest": [],
+                   "brief": {"title_direction": "X", "meta_direction": "Y",
+                             "cta": {"text": "Book a demo today now please"}}})
+    assert "_guardrails" in out   # ran to completion, no AttributeError on cta.split()
+
+
 def test_c22_byline_and_last_updated_in_every_package():
     """E-E-A-T: every page must carry author + last-updated (or surface a checkpoint)."""
     import nodes.content.c22_packager as c22

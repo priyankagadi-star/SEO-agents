@@ -36,7 +36,17 @@ def run(state: dict) -> dict:
         failures.append({"description": f"meta direction {len(meta)} chars > {_LIMITS['meta_chars']}",
                          "owning_step": "c8_brief_compiler", "severity": "major",
                          "evidence": meta, "fix": "Shorten the meta direction."})
-    cta = brief.get("cta") or ""
+    # cta may come back as a string, dict ({text/label/cta/value}), or list —
+    # real models vary the shape; coerce to a string before length checks.
+    cta_raw = brief.get("cta") or ""
+    if isinstance(cta_raw, dict):
+        cta = str(cta_raw.get("text") or cta_raw.get("label") or cta_raw.get("cta")
+                  or cta_raw.get("value") or next((v for v in cta_raw.values()
+                                                   if isinstance(v, str)), ""))
+    elif isinstance(cta_raw, (list, tuple)):
+        cta = " ".join(str(x) for x in cta_raw)
+    else:
+        cta = str(cta_raw)
     if cta and len(cta.split()) > _LIMITS["cta_words"]:
         failures.append({"description": f"CTA '{cta}' > {_LIMITS['cta_words']} words",
                          "owning_step": "c8_brief_compiler", "severity": "major",
