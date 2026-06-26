@@ -70,26 +70,84 @@ def as_feats(body):
         f'<div class="feat"><div class="feat-ico">{ic[i%len(ic)]}</div><h3>{md_inline(t)}</h3><p>{md_inline(d)}</p></div>'
         for i, (t, d) in enumerate(cards)) + "</div>"
 
-KICKERS = {"problem": "The problem", "how_it_works": "How it works", "capabilities": "What you get",
-           "differentiators": "Why Siftly", "proof": "Proof", "market_context": "Why now",
-           "cta": "Get started"}
-def render_section(sid, h2, body, soft):
-    inner = as_steps(body) or as_feats(body) or prose(body)
-    kick = KICKERS.get(sid, "")
-    kh = f'<span class="kicker">{esc(kick)}</span>' if kick else ""
-    cls = "band band-soft" if soft else "band"
-    return f'<section class="{cls}"><div class="wrap"><div class="band-head">{kh}<h2>{esc(h2)}</h2></div>{inner}</div></section>'
+def _n(t): return (t or "").lower()
 
-# body sections (skip answer_first hero + faq + cta; rendered separately)
+def classify_role(idx, total, sid, h2, body):
+    """Detect a section's role by content, not just id — outlines may use
+    semantic ids (answer_first/proof/cta) OR generic ones (s1..s8)."""
+    s, h, b = _n(sid), _n(h2), body or ""
+    if s == "faq" or "frequently asked" in h or h.strip() in ("faq", "faqs") or b.count("### ") >= 2:
+        return "faq"
+    if s == "proof" or "real results" in h or "results from real" in h or re.search(r'(^|\n)\s*>\s*"', b):
+        return "proof"
+    if s == "cta" or "primary cta" in h or h.startswith("cta") or "ready to" in h or "call to action" in h:
+        return "cta"
+    if idx == 0 and (s in ("answer_first", "answer", "hero") or "answer-first" in h or "lead:" in h):
+        return "hero"
+    return "body"
+
+_KICK_KW = [("fail", "The problem"), ("problem", "The problem"), ("matters", "The problem"),
+            ("how ", "How it works"), ("works", "How it works"), ("capabilit", "What you get"),
+            ("deliver", "What you get"), ("different", "Why Siftly"), ("vs ", "Why Siftly"),
+            ("why now", "Why now"), ("measurable", "Why now")]
+def kicker_for(sid, h2):
+    semantic = {"problem": "The problem", "how_it_works": "How it works", "capabilities": "What you get",
+                "differentiators": "Why Siftly", "market_context": "Why now"}
+    if sid in semantic:
+        return semantic[sid]
+    for kw, k in _KICK_KW:
+        if kw in _n(h2):
+            return k
+    return ""
+
+def clean_h2(h2):
+    """An h2 that is really a brief instruction ('Answer-first lead: …',
+    'Primary CTA block: …') is not a headline — strip to its real headline or drop."""
+    t = (h2 or "").strip()
+    if re.match(r"(?i)^(answer-first lead|primary cta block|cta block|hero)\b", t) or len(t) > 95:
+        tail = t.split(":")[-1].strip()
+        return tail[:80] if 8 < len(tail) <= 80 and "→" not in tail else ""
+    return t
+
+def clean_body(body, h2):
+    """Strip embedded markdown headers (## repeating the section heading; ###
+    become subheads) and blockquote markers so prose() renders cleanly."""
+    out = []
+    for ln in (body or "").split("\n"):
+        m = re.match(r"\s*#{2,6}\s+(.*)", ln)
+        if m:
+            txt = m.group(1).strip()
+            if _n(txt) == _n(h2):
+                continue
+            out.append(f"**{txt}**")
+        else:
+            out.append(re.sub(r"^\s*>\s?", "", ln))
+    return "\n".join(out)
+
+def render_section(h2, body, soft, sid=""):
+    body = clean_body(body, h2)
+    inner = as_steps(body) or as_feats(body) or prose(body)
+    kh2 = clean_h2(h2)
+    kick = kicker_for(sid, h2)
+    kh = f'<span class="kicker">{esc(kick)}</span>' if kick else ""
+    head = (f'<div class="band-head">{kh}<h2>{esc(kh2)}</h2></div>' if kh2
+            else (f'<div class="band-head">{kh}</div>' if kh else ""))
+    cls = "band band-soft" if soft else "band"
+    return f'<section class="{cls}"><div class="wrap">{head}{inner}</div></section>'
+
+# body sections — skip hero / faq / cta / proof (rendered separately), by ROLE
+roles = {}
 body_html = []
 soft = False
-for s in outline:
-    sid = s.get("id");
-    # skip hero, faq, cta (rendered separately) and proof (the dedicated
-    # testimonial-card section below renders it — avoid a duplicate Proof block)
-    if sid in ("answer_first", "faq", "cta", "proof") or sid not in sections:
+total = len(outline)
+for idx, s in enumerate(outline):
+    sid = s.get("id")
+    if sid not in sections:
         continue
-    body_html.append(render_section(sid, s.get("h2", ""), sections[sid], soft))
+    roles[sid] = classify_role(idx, total, sid, s.get("h2", ""), sections[sid])
+    if roles[sid] != "body":
+        continue
+    body_html.append(render_section(s.get("h2", ""), sections[sid], soft, sid))
     soft = not soft
 body_html = "\n".join(body_html)
 
@@ -107,9 +165,16 @@ def quote(r):
     return (f'<figure class="quote"><div class="rating">★★★★★</div><blockquote>"{esc(r["reviewBody"])}"</blockquote>'
             f'<figcaption><span class="avatar">{esc(n[:1])}</span><span><strong>{esc(n)}</strong><br>'
             f'<span class="org">{esc(org)}</span> <span class="role">· {esc(role)}</span></span></figcaption></figure>')
+# proof heading from whichever section is the proof role
+_proof_sid = next((sid for sid, r in roles.items() if r == "proof"), None)
+_proof_h2_raw = next((s.get("h2", "") for s in outline if s.get("id") == _proof_sid), "") if _proof_sid else ""
+# fallback: if the schema carries no Reviews, lift blockquotes from the proof section
+if not reviews and _proof_sid:
+    for q_ in re.findall(r'>\s*"([^"]+)"', sections.get(_proof_sid, "")):
+        reviews.append({"@type": "Review", "reviewBody": q_, "author": {"name": ""}})
 proof_html = ""
 if reviews:
-    proof_h2 = next((s.get("h2") for s in outline if s.get("id") == "proof"), None) or "Results teams have already seen"
+    proof_h2 = clean_h2(_proof_h2_raw) or "Results teams have already seen"
     proof_html = f'<section class="proof"><div class="wrap"><div class="band-head center"><span class="kicker">Proof</span><h2>{esc(proof_h2)}</h2></div><div class="quotes">{"".join(quote(r) for r in reviews)}</div></div></section>'
 
 faq_html = "".join(f'<details><summary>{esc(f["q"])}</summary><div class="faq-a"><p>{md_inline(f["a"])}</p></div></details>' for f in faq)
@@ -127,10 +192,15 @@ if feature_links:
     cards = "".join(f'<a class="plink" href="{_html.escape(fl["url"])}">{esc(fl["label"])} <span>→</span></a>' for fl in feature_links[:10])
     links_html = f'<section class="band"><div class="wrap"><div class="band-head center"><span class="kicker">Explore the platform</span><h2>Every capability, in depth</h2></div><div class="plink-grid">{cards}</div></div></section>'
 
-# CTA section
-cta_sec = next((s for s in outline if s.get("id") == "cta"), None)
-cta_h2 = cta_sec.get("h2") if cta_sec else "Ready to win AI search?"
-cta_body = strip_facts(sections.get("cta", "")).split("\n")[0] if sections.get("cta") else LEAD
+# CTA section — found by role; its h2 may be a brief instruction, so clean it
+_cta_sid = next((sid for sid, r in roles.items() if r == "cta"), None)
+_cta_h2_raw = next((s.get("h2", "") for s in outline if s.get("id") == _cta_sid), "") if _cta_sid else ""
+cta_h2 = clean_h2(_cta_h2_raw) or "Ready to win AI search?"
+cta_body = ""
+if _cta_sid and sections.get(_cta_sid):
+    cta_body = strip_facts(clean_body(sections[_cta_sid], _cta_h2_raw)).split("\n")[0].strip()
+if not cta_body or len(cta_body) < 15 or "→" in cta_body or "button:" in cta_body.lower():
+    cta_body = strip_facts(LEAD)
 
 # author bio + LinkedIn into schema
 lnk = author.get("linkedin")
