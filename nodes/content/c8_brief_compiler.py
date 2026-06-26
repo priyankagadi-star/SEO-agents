@@ -35,8 +35,15 @@ def run(state: dict) -> dict:
         if isinstance(s, str) and not any(w in template_blob for w in s.lower().split()[:2])
     ][:8]
     # owner-supplied "what's happening now" — brand_profile or inputs.json
+    rd = state.get("research_dossier") or {}
     trend_signals = (state.get("brand_profile") or {}).get("trend_signals") or \
-                    (state.get("research_dossier") or {}).get("trend_signals") or []
+                    rd.get("trend_signals") or []
+    # research for information gain: real market stats, authoritative external
+    # sources, real PAA questions. Surfaced so the brief carries a market-context
+    # section + a sources block the writer can cite (raises the GOAL score).
+    market_stats = rd.get("market_stats") or []
+    external_sources = rd.get("external_sources") or []
+    real_questions = rd.get("real_questions") or []
 
     out = call_node(
         "c8_brief_compiler", "fast",
@@ -50,6 +57,9 @@ def run(state: dict) -> dict:
         required_blocks=json.dumps(required),
         candidate_additions=json.dumps(candidate_additions),
         trend_signals=json.dumps(trend_signals),
+        market_stats=json.dumps(market_stats),
+        external_sources=json.dumps(external_sources),
+        real_questions=json.dumps(real_questions),
         schema_types=json.dumps(list(profile.schema_types)),
         ledger_markdown=led.to_markdown(),
     )
@@ -70,12 +80,31 @@ def run(state: dict) -> dict:
     for b in profile.required_blocks():
         if b.id.lower() not in have and b.label.lower() not in have:
             merged.append({"id": b.id, "intent": b.label, "required": True})
+    # research-driven additions: a market-context section (cite real stats +
+    # external sources) goes near the top; carry sources + real PAA on the brief
+    # so c9 (outline), c11 (drafter) and c12 (faq) can use them.
+    if market_stats or external_sources:
+        have_ids = {str(s.get("id") or s.get("intent", "")).lower() for s in merged}
+        if "market_context" not in have_ids:
+            insert_at = 1 if merged else 0
+            merged.insert(insert_at, {
+                "id": "market_context",
+                "intent": "Why this matters now — cite real market stats and external authoritative sources",
+                "cite_facts": [f"mkt-*"] if market_stats else [],
+                "from_research": True})
     brief["structure"] = merged
     brief.setdefault("schema_types", list(profile.schema_types))
     brief.setdefault("word_budget", wb)
+    if market_stats:
+        brief["market_stats"] = market_stats
+    if external_sources:
+        brief["external_sources"] = external_sources
+    if real_questions:
+        brief["real_questions"] = real_questions
     brief["page_profile"] = profile.page_type
 
     return {"brief": brief,
             "_guardrails": [{"check": "brief_compiled", "page_type": profile.page_type,
                              "structure_blocks": len(merged),
+                             "research_seeded": bool(market_stats or external_sources),
                              "required_blocks": [b.id for b in profile.required_blocks()]}]}

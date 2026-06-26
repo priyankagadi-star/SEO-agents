@@ -24,6 +24,12 @@ def run(state: dict) -> dict:
     for f in facts_from_brand(state.get("brand_profile") or {}, state.get("brand_assets") or {}):
         led.add(f)
     rd = state.get("research_dossier") or {}
+    # seed research facts (market stats + external authoritative sources) as
+    # verified, so the writer can cite real corroboration/data the GOAL gate
+    # scores — not only owner claims.
+    from research_facts import facts_from_research
+    for f in facts_from_research(rd):
+        led.add(f)
     claims = list(state.get("failure_modes") or [])
     claims += [str(x) for x in (state.get("keep_list") or [])]
     if isinstance(rd, dict):

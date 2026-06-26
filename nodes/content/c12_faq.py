@@ -10,9 +10,15 @@ from llm import call_node
 def run(state: dict) -> dict:
     led = FactsLedger(list(state.get("facts_ledger", [])))
     outline_summary = [s.get("h2") for s in (state.get("outline") or {}).get("sections", [])]
+    # prefer real PAA: dossier.real_questions (or brief) over SERP stub, so the
+    # FAQ answers actual searcher questions (GOAL question-coverage metric).
+    rd = state.get("research_dossier") or {}
+    serp_paa = state.get("serp_analysis", {}).get("paa", []) if isinstance(state.get("serp_analysis"), dict) else []
+    paa = (rd.get("real_questions") or (state.get("brief") or {}).get("real_questions")
+           or serp_paa)
     out = call_node(
         "c12_faq", "fast",
-        paa_questions=json.dumps(state.get("serp_analysis", {}).get("paa", []) if isinstance(state.get("serp_analysis"), dict) else []),
+        paa_questions=json.dumps(paa),
         outline_summary=json.dumps(outline_summary),
         primary_keyword=state["primary_keyword"],
         ledger_markdown=led.to_markdown(),
