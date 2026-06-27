@@ -225,8 +225,12 @@ def cmd_content(args) -> int:
     bp = inputs.get("brand_profile") or acct.get("brand_profile")
     if bp:
         state["brand_profile"] = bp
-    # GSC head queries (real buyer vocabulary) — from --gsc or the brand's gsc/ folder
-    gsc_path = args.gsc or (str(p) if account and (p := account.latest_gsc_export()) else None)
+    # GSC head queries (real buyer vocabulary) — from --gsc, else auto-resolved
+    # from the account: the page-filtered export matching this URL (self-identified
+    # via Filters.csv), else the latest site-wide export. So you drop exports in
+    # gsc/ once and never pass --gsc per page.
+    _turl = state.get("target_url") or (state.get("research_dossier") or {}).get("target_url")
+    gsc_path = args.gsc or (str(p) if account and (p := account.gsc_export_for(_turl)) else None)
     if gsc_path and not state.get("head_queries"):
         from tools.gsc import parse_gsc_export
         try:

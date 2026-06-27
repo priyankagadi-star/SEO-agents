@@ -33,6 +33,29 @@ def _read_csv_rows(name: str, raw: bytes) -> list[dict]:
     return list(csv.DictReader(io.StringIO(text)))
 
 
+def export_page_filter(path: str | Path) -> str | None:
+    """If a GSC export is filtered to one page, return that page URL (from its
+    Filters.csv 'Page' row); None for a site-wide export. Lets an export
+    self-identify which page it belongs to — drop it in, no naming needed."""
+    path = Path(path)
+    try:
+        if path.suffix.lower() == ".zip":
+            with zipfile.ZipFile(path) as zf:
+                names = {Path(n).stem.lower(): n for n in zf.namelist()}
+                if "filters" not in names:
+                    return None
+                rows = _read_csv_rows("Filters.csv", zf.read(names["filters"]))
+        else:
+            return None
+    except Exception:
+        return None
+    for r in rows:
+        vals = {k.lower().strip(): v for k, v in r.items()}
+        if vals.get("filter", "").strip().lower() == "page":
+            return (vals.get("value") or "").strip() or None
+    return None
+
+
 def parse_gsc_export(path: str | Path) -> dict:
     """Parse a GSC export (ZIP with Queries.csv/Pages.csv/Chart.csv/Countries.csv,
     or a single CSV treated as Queries)."""

@@ -142,6 +142,27 @@ class Account:
         candidates = [p for p in self.gsc_dir.iterdir() if p.suffix.lower() in (".zip", ".csv")]
         return max(candidates, key=lambda p: p.stat().st_mtime) if candidates else None
 
+    def gsc_export_for(self, url: str | None) -> Path | None:
+        """Per-page GSC export whose 'Page' filter matches `url`, else the latest
+        site-wide export. Exports self-identify via their Filters.csv, so dropping
+        a page-filtered export anywhere in gsc/ (or gsc/by-page/) is enough — no
+        naming convention, no --gsc flag needed."""
+        if self.gsc_dir is None or not self.gsc_dir.exists():
+            return None
+        if url:
+            from tools.gsc import export_page_filter
+
+            def _path(u: str) -> str:
+                u = (u or "").rstrip("/")
+                return u.split(".ai", 1)[-1].split(".com", 1)[-1] if "://" in u else u
+            target = _path(url)
+            search = list(self.gsc_dir.rglob("*.zip"))
+            for p in search:
+                pf = export_page_filter(p)
+                if pf and _path(pf) == target:
+                    return p
+        return self.latest_gsc_export()
+
     def content_inputs(self) -> dict:
         """The account-level fields that feed a content run's intake."""
         return {
