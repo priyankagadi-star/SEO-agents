@@ -241,6 +241,28 @@ def cmd_content(args) -> int:
     cluster_map = inputs.get("cluster_map") or acct.get("cluster_map")
     if cluster_map:
         state["cluster_map"] = cluster_map
+
+    # INPUT CONTRACT — refuse to generate a page from nothing.
+    if not getattr(args, "fake", False) and not getattr(args, "skip_input_contract", False):
+        import os
+        from inputs_contract import validate_content_inputs
+        _dossier = state.get("research_dossier") or {}
+        page_state, errs = validate_content_inputs(
+            mode=args.mode,
+            seed_keyword=state.get("primary_keyword"),
+            target_url=state.get("target_url") or _dossier.get("target_url"),
+            gsc_available=bool(state.get("head_queries")),
+            semrush_available=bool(os.environ.get("SEMRUSH_API_KEY")),
+            research_dossier=_dossier,
+        )
+        if errs:
+            console.print(f"[red]Input contract failed ({page_state} page):[/red]")
+            for e in errs:
+                console.print(f"  [red]- {e}[/red]")
+            console.print("[dim](bypass with --skip-input-contract; --fake demos skip it)[/dim]")
+            return 2
+        console.print(f"[dim]input contract ok — {page_state} page[/dim]")
+
     graph = build_content_graph(checkpointer=sqlite_checkpointer(run_dir))
     config = {"configurable": {"thread_id": run_dir.name}, "recursion_limit": 100}
     try:
@@ -361,6 +383,8 @@ def main(argv=None) -> int:
                            help="run with the offline scripted LLM (no API key needed)")
     p_content.add_argument("--resume", metavar="runs/<ts>",
                            help="resume an interrupted run from its checkpoint")
+    p_content.add_argument("--skip-input-contract", action="store_true",
+                           help="bypass the URL+GSC / seed+research input contract")
     p_content.set_defaults(fn=cmd_content)
 
     p_eval = sub.add_parser("eval", help="GO/KILL eval gate (rubric + seeded errors)")
