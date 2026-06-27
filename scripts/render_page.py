@@ -36,7 +36,12 @@ FACT = re.compile(r"\s*\(fact:[a-z0-9\-]+\)", re.I)
 VERIFY = re.compile(r"\s*\[VERIFY[^\]]*\]")   # never render an unresolved flag
 def strip_facts(t): return VERIFY.sub("", FACT.sub("", t or ""))
 def esc(t): return _html.escape(strip_facts(t), quote=False)
-def md_inline(t): return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", esc(t))
+def md_inline(t):
+    s = esc(t)
+    s = re.sub(r"\[([^\]]+)\]\((/[^)\s]+|https?://[^)\s]+)\)", r'<a href="\2">\1</a>', s)  # md links
+    s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)                                  # bold
+    s = re.sub(r"(?<!\w)\*(?=\S)(.+?)(?<=\S)\*(?!\w)", r"<em>\1</em>", s)                     # italic
+    return s.replace("**", "").replace("](", "] (")   # strip any stray markers
 def blocks(t): return [b.strip() for b in re.split(r"\n\s*\n", strip_facts(t)) if b.strip()]
 
 def md_table(b):
@@ -59,7 +64,8 @@ def prose(body):
         if m:
             out.append(f'<h3 class="sub">{md_inline(m.group(1))}</h3>')
         elif re.match(r"^#{2,6}\s+", b):                       # stray markdown header
-            out.append(f'<h3 class="sub">{md_inline(re.sub(r"^#{2,6}\\s+", "", b))}</h3>')
+            htxt = md_inline(re.sub(r"^#{2,6}\s+", "", b))
+            out.append(f'<h3 class="sub">{htxt}</h3>')
         else:
             out.append(f"<p>{md_inline(b)}</p>")
     return "\n".join(out)
@@ -122,9 +128,11 @@ def clean_h2(h2):
     """An h2 that is really a brief instruction ('Answer-first lead: …',
     'Primary CTA block: …') is not a headline — strip to its real headline or drop."""
     t = (h2 or "").strip()
-    if re.match(r"(?i)^(answer-first lead|primary cta block|cta block|hero)\b", t) or len(t) > 95:
-        tail = t.split(":")[-1].strip()
-        return tail[:80] if 8 < len(tail) <= 80 and "→" not in tail else ""
+    if re.match(r"(?i)^(answer-first lead|primary cta block|cta block|call to action|cta button|hero)\b", t) or len(t) > 95:
+        tail = re.split(r"[:—]", t)[-1].strip()           # instructions use ':' or '—'
+        if re.search(r"(?i)primary|secondary|button|link to|→|/[a-z]", tail) or not 8 < len(tail) <= 80:
+            return ""                                       # still an instruction → drop, caller defaults
+        return tail
     return t
 
 def clean_body(body, h2):
@@ -214,11 +222,15 @@ if feature_links:
 _cta_sid = next((sid for sid, r in roles.items() if r == "cta"), None)
 _cta_h2_raw = next((s.get("h2", "") for s in outline if s.get("id") == _cta_sid), "") if _cta_sid else ""
 cta_h2 = clean_h2(_cta_h2_raw) or "Ready to win AI search?"
+def _plain(t):   # strip markdown to plain text for single-line slots (CTA)
+    t = re.sub(r"\[([^\]]+)\]\([^)]*\)", r"\1", t or "")
+    return t.replace("**", "").replace("*", "").strip()
 cta_body = ""
 if _cta_sid and sections.get(_cta_sid):
-    cta_body = strip_facts(clean_body(sections[_cta_sid], _cta_h2_raw)).split("\n")[0].strip()
-if not cta_body or len(cta_body) < 15 or "→" in cta_body or "button:" in cta_body.lower():
-    cta_body = strip_facts(LEAD)
+    cta_body = _plain(strip_facts(clean_body(sections[_cta_sid], _cta_h2_raw)).split("\n")[0])
+_bad_cta = any(x in cta_body.lower() for x in ("button:", "→", "primary ", "secondary", "]("))
+if not cta_body or len(cta_body) < 15 or _bad_cta:
+    cta_body = _plain(strip_facts(LEAD))
 
 # author bio + LinkedIn into schema
 lnk = author.get("linkedin")
