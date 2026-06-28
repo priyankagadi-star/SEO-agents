@@ -161,6 +161,24 @@ PROFILES: dict[str, PageProfile] = {
         default_word_budget=(600, 1200),
         notes="Conversion-first; keep blocks tight and the CTA above the fold.",
     ),
+    "free-tool": PageProfile(
+        "free-tool",
+        blocks=(
+            # tool_widget: the interactive tool lives above the fold. Placeholder
+            # for UI — the agent writes the supporting copy beneath it, not the tool.
+            Block("tool_widget", "Tool above the fold (UI placeholder)", ("",)),
+            Block("what_it_does", "What the tool does (40–60w, AIO-citable)", ("what", "checks", "measures", "calculates", "shows")),
+            Block("how_to_use", "How to use it (steps)", ("how to", "step", "steps", "use it", "first", "then")),
+            Block("what_it_measures", "What it measures (concept + why)", ("measure", "why", "matters", "method", "score")),
+            Block("when_to_use", "Who it's for / when to use", ("for", "if you", "when", "best for")),
+            _FAQ,
+            Block("upsell_cta", "Upsell to the matching feature", ("see it", "in the product", "full", "upgrade", "try", "explore", "book", "demo")),
+        ),
+        schema_types=("WebPage", "SoftwareApplication", "HowTo", "FAQPage"),
+        serp_targets=("featured_snippet", "aio_citation", "people_also_ask"),
+        default_word_budget=(800, 1200),
+        notes="Tool-first: the interactive widget is the hero; supporting copy explains, ranks, and upsells. Keep AIO-citable: clean 40-60w 'what this is', steps, and FAQ.",
+    ),
 }
 
 
