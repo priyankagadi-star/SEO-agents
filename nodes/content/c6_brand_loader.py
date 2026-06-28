@@ -35,9 +35,26 @@ def run(state: dict) -> dict:
         ledger_markdown=led.to_markdown(),
     )
 
+    # human_checkpoints are typed list[str] in state. Real models sometimes
+    # return structured dicts ({id, description, severity, action, issue, ...}).
+    # Coerce to strings; pick a description field when present so the human
+    # reader still sees what to do, else fall back to a string repr.
+    def _as_str(h):
+        if isinstance(h, str):
+            return h.strip()
+        if isinstance(h, dict):
+            t = (h.get("description") or h.get("action") or h.get("issue")
+                 or h.get("message") or h.get("ask") or "")
+            tag = h.get("id") or h.get("category") or ""
+            return (f"[HUMAN] {tag}: {t}".strip(": ") if t else f"[HUMAN] {tag or h!r}")
+        return str(h)
+
+    model_hc = [_as_str(h) for h in (out.get("human_checkpoints") or [])]
+    merged_hc = hc + [h for h in model_hc if h and h not in hc]
+
     return {
         "brand_voice": out.get("brand_voice", {}),
-        "human_checkpoints": hc + [h for h in out.get("human_checkpoints", []) if h not in hc],
+        "human_checkpoints": merged_hc,
         "_c6": {"usable_testimonials": usable, "unusable_testimonials": unusable,
                 "differentiators": brand.get("differentiators", [])},
         "_guardrails": [{"check": "testimonial_permissions",

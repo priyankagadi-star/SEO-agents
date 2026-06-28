@@ -101,6 +101,30 @@ def test_c16_strips_verify_note_with_internal_period_keeps_grounded_claim():
     assert "We saved teams" not in out["draft"]                # ungrounded claim cut
 
 
+def test_c6_coerces_dict_human_checkpoints_to_strings():
+    """Real models return human_checkpoints as structured dicts; state expects
+    list[str], and Pydantic crashes if dicts leak through."""
+    import json
+    import nodes.content.c6_brand_loader as c6
+    from fakes import ScriptedLLM
+    from llm import set_client, reset_client
+    payload = {"c6_brand_loader": json.dumps({"brand_voice": {"voice": "x"},
+        "human_checkpoints": [
+            {"id": "x", "description": "[VERIFY: do X]"},
+            {"id": "y", "category": "Assets", "issue": "Y", "action": "[VERIFY: do Y]"},
+            "[HUMAN] plain string survives",
+        ]})}
+    set_client(ScriptedLLM(payload))
+    try:
+        out = c6.run({"brand_assets": {"author": {"name": "X"}}, "facts_ledger": [],
+                      "brand_profile": {}, "human_checkpoints": []})
+    finally:
+        reset_client()
+    assert all(isinstance(h, str) for h in out["human_checkpoints"])
+    assert any("[VERIFY: do X]" in h for h in out["human_checkpoints"])
+    assert "[HUMAN] plain string survives" in out["human_checkpoints"]
+
+
 def test_brand_facts_seed_engine_count():
     from brand_facts import facts_from_brand
     facts = facts_from_brand(
