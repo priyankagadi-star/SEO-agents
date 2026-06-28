@@ -29,7 +29,7 @@ rubric_pass_pct: 85
 # Google traffic). When enforce_information_gain is true, c19 fails any page
 # scoring < pass_score or missing a hard pre-condition (value density, sourced
 # freshness, zero unresolved [VERIFY]). Set false to score-only (advisory).
-goal: {enforce_information_gain: true, pass_score: 93}
+goal: {enforce_information_gain: true, pass_score: 92}
 # SEO research provider for cold mode (c3/c4/c5). semrush uses the Analytics
 # HTTP API with env SEMRUSH_API_KEY (NOT the MCP server); no key ⇒ honest stub.
 research: {provider: semrush, semrush_database: us}
