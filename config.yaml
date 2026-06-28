@@ -20,7 +20,7 @@ pricing:
   writer: {input_per_mtok: 15.00, output_per_mtok: 75.00}
   # NOTE: the values above are Claude prices. On azure_openai, set them to your
   # Azure deployment prices or cost figures in the runlog will be wrong.
-route_back_cap: 2
+route_back_cap: 3
 budgets: {max_cost_usd_per_page: 3.0, max_minutes_per_page: 15}
 ui_limits: {h1_chars: 60, meta_chars: 155, cta_words: 5}
 word_budget: {feature: [1400, 1800], blog-listicle: [1800, 2600], guide: [2000, 3200], comparison: [1500, 2200], glossary: [800, 1400], landing: [600, 1200], free-tool: [800, 1200]}
@@ -29,7 +29,7 @@ rubric_pass_pct: 85
 # Google traffic). When enforce_information_gain is true, c19 fails any page
 # scoring < pass_score or missing a hard pre-condition (value density, sourced
 # freshness, zero unresolved [VERIFY]). Set false to score-only (advisory).
-goal: {enforce_information_gain: true, pass_score: 70}
+goal: {enforce_information_gain: true, pass_score: 93}
 # SEO research provider for cold mode (c3/c4/c5). semrush uses the Analytics
 # HTTP API with env SEMRUSH_API_KEY (NOT the MCP server); no key ⇒ honest stub.
 research: {provider: semrush, semrush_database: us}

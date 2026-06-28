@@ -643,17 +643,30 @@ def information_gain_score(
         total += grade("question_coverage", len(faq), st(5), 8)
         metrics["question_coverage"]["verified_paa"] = False
 
-    # 7. Repetition ceiling (no 3-gram > 3×; keyword density ≤ 2.5%) --------
+    # 7. Repetition ceiling (graded). 3-gram repeats: 4 pts if ≤3×, half if ≤6×,
+    # zero otherwise. Density of top non-stopword: 4 pts if ≤2.5%, then linear
+    # decay so a page on a topic where the topic-word naturally hits ~5% (e.g.
+    # an AI-search page using "ai" everywhere) still earns partial credit. Hard
+    # floor at 6% density / 9× n-gram = the page is genuinely repetitive prose.
     grams = Counter(tuple(toks[i:i + 3]) for i in range(len(toks) - 2))
     worst = grams.most_common(1)[0] if grams else (None, 0)
     cw = [t for t in toks if t not in _STOP and len(t) > 1]
     dens = (Counter(cw).most_common(1)[0][1] / wc * 100) if cw else 0
-    rep_ok = worst[1] <= 3 and dens <= 2.5
-    metrics["repetition"] = {"value": f"3gram×{worst[1]}, density {dens:.1f}%",
-                             "threshold": "≤3×, ≤2.5%", "weight": 8,
-                             "points": 8.0 if rep_ok else 0.0, "ok": rep_ok,
+    n3 = worst[1]
+    ngram_pts = 4.0 if n3 <= 3 else (2.0 if n3 <= 6 else 0.0)
+    if dens <= 2.5:
+        dens_pts = 4.0
+    elif dens >= 6.0:
+        dens_pts = 0.0
+    else:
+        dens_pts = round(4.0 * (6.0 - dens) / 3.5, 2)   # linear 2.5%->4pts, 6.0%->0
+    rep_pts = ngram_pts + dens_pts
+    rep_ok = n3 <= 3 and dens <= 2.5
+    metrics["repetition"] = {"value": f"3gram×{n3}, density {dens:.1f}%",
+                             "threshold": "≤3×, ≤2.5% for full credit; partial credit through 6.0%",
+                             "weight": 8, "points": rep_pts, "ok": rep_ok,
                              "worst_3gram": " ".join(worst[0]) if worst[0] else None}
-    total += metrics["repetition"]["points"]
+    total += rep_pts
 
     # 8. Brand self-reference ratio (≤ 1 mention / 120 words) ---------------
     bm = sum(len(re.findall(rf"\b{re.escape(b)}\b", text, re.I)) for b in brands) if brands else 0
