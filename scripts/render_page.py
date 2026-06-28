@@ -21,11 +21,39 @@ rd = inp.get("research_dossier", {})
 state["brand_assets"] = json.loads(Path("brands/siftly.ai/brand_assets.json").read_text())
 
 H1 = rd.get("suggested_h1") or pkg["title_variants"][0]
-LEAD = rd.get("quotable_intro") or pkg.get("meta", "")
+# AIO-citable answer (the 40-60 word block) is great structurally but too long
+# for a hero subhead. Use it raw if a hero_subhead override is given; else
+# smart-truncate to 1-2 short sentences (cap ~180 chars) at a sentence boundary
+# so the hero feels punchy. The full answer still lives in the body's
+# answer_first/what_it_does block, so the AIO citation surface is preserved.
+import re as _re_lead
+_full_intro = rd.get("quotable_intro") or pkg.get("meta", "")
+_override = rd.get("hero_subhead")
+if _override:
+    LEAD = _override
+else:
+    _sents = _re_lead.split(r"(?<=[.!?])\s+", (_full_intro or "").strip())
+    LEAD = (_sents[0] if _sents else "").strip()
+    # if first sentence still too long, fall back to a clean prefix-cut at ~160ch
+    if len(LEAD) > 200:
+        cut = LEAD[:180].rsplit(" ", 1)[0]
+        LEAD = (cut + "…") if not cut.endswith(("!", "?", ".")) else cut
+    # if first sentence is too short, append the second to gain substance
+    elif len(LEAD) < 80 and len(_sents) > 1:
+        cand = (LEAD + " " + _sents[1].strip()).strip()
+        if len(cand) <= 200:
+            LEAD = cand
 TITLE = (pkg["title_variants"][0] + " | Siftly")
 META = pkg.get("meta", "")
 BYLINE = pkg.get("byline_line") or ""
 CTA_LABEL = rd.get("primary_cta", "Book a demo")
+# Upsell URL: for a free-tool page, the primary CTA points to the matching
+# /features/* page (the upsell), not /demo. Pick the first /features/* or
+# /shopping/* link in links_cross; fall back to /demo if none provided.
+_xlinks = rd.get("links_cross") or []
+CTA_URL = next((u for u in _xlinks if isinstance(u, str)
+                and (u.startswith("/features/") or u.startswith("/shopping/")
+                     or u.startswith("/answers"))), "/demo")
 TRENDS = rd.get("trend_signals", [])
 sections = state.get("sections", {})
 outline = (state.get("outline") or {}).get("sections", [])
@@ -109,7 +137,9 @@ def classify_role(idx, total, sid, h2, body):
         return "faq"
     if s == "proof" or "real results" in h or "results from real" in h or re.search(r'(^|\n)\s*>\s*"', b):
         return "proof"
-    if s == "cta" or "primary cta" in h or h.startswith("cta") or "ready to" in h or "call to action" in h:
+    if (s in ("cta", "upsell_cta", "upsell", "cta_upsell", "cta_bottom") or
+            "primary cta" in h or h.startswith("cta") or "ready to" in h
+            or "call to action" in h or "see it in the product" in h or "see the full" in h):
         return "cta"
     if idx == 0 and (s in ("answer_first", "answer", "hero") or "answer-first" in h or "lead:" in h):
         return "hero"
@@ -251,7 +281,15 @@ def _plain(t):   # strip markdown to plain text for single-line slots (CTA)
     return t.replace("**", "").replace("*", "").strip()
 cta_body = ""
 if _cta_sid and sections.get(_cta_sid):
-    cta_body = _plain(strip_facts(clean_body(sections[_cta_sid], _cta_h2_raw)).split("\n")[0])
+    raw = strip_facts(clean_body(sections[_cta_sid], _cta_h2_raw))
+    # pick the first non-empty paragraph (not a bullet list line), then take
+    # its first 1-2 sentences. The original full upsell with bullets is also
+    # rendered as a 'cta'-roled body band above; this is the closing line.
+    paras = [p.strip() for p in re.split(r"\n\s*\n", raw) if p.strip()
+             and not p.lstrip().startswith(("-", "*", "•"))]
+    head = (paras[0] if paras else "").split("\n")[0]
+    sents = re.split(r"(?<=[.!?])\s+", _plain(head))
+    cta_body = " ".join(sents[:2]).strip()
 _bad_cta = any(x in cta_body.lower() for x in ("button:", "→", "primary ", "secondary", "]("))
 if not cta_body or len(cta_body) < 15 or _bad_cta:
     cta_body = _plain(strip_facts(LEAD))
@@ -302,7 +340,7 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <span class="eyebrow">Siftly · Feature</span>
 <h1 class="h-display">{grad(H1)}</h1>
 <p class="lead">{esc(LEAD)}</p>
-<div class="cta-row"><a class="btn btn-primary" href="/demo">{esc(CTA_LABEL)}</a>
+<div class="cta-row"><a class="btn btn-primary" href="{esc(CTA_URL)}">{esc(CTA_LABEL)}</a>
 <a class="btn btn-ghost" href="/guide/generative-engine-optimization">Read the GEO guide</a></div>
 <p style="margin-top:22px;font-size:13px;color:var(--muted)">{esc(BYLINE)}</p></div>
 <div class="mock"><div class="mock-bar"><span></span><span></span><span></span></div><div class="mock-body">
@@ -329,7 +367,7 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="meta"><strong>{esc(author.get('byline') or BYLINE)}</strong>{lnk_html}<br>{esc(author.get('bio',''))}</div></div></div></section>
 
 <section class="cta"><div class="wrap"><h2>{esc(cta_h2)}</h2><p>{esc(cta_body)}</p>
-<a class="btn btn-primary" href="/demo">{esc(CTA_LABEL)}</a></div></section>
+<a class="btn btn-primary" href="{esc(CTA_URL)}">{esc(CTA_LABEL)}</a></div></section>
 
 <footer><div class="wrap footer-grid"><div><div class="brand" style="margin-bottom:10px"><span class="brand-dot"></span>Siftly</div>
 <p>{esc(BYLINE)}</p></div><div><strong>Explore</strong><div class="footer-links">
