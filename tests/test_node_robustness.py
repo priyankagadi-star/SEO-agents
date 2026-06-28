@@ -125,6 +125,60 @@ def test_c6_coerces_dict_human_checkpoints_to_strings():
     assert "[HUMAN] plain string survives" in out["human_checkpoints"]
 
 
+def test_c20_seo_length_contracts_min_max_flagged():
+    """SEO length checks: title min, meta min, H1 min/max, AIO answer block,
+    H2 / FAQ Q&A / paragraph / URL slug — each gets a minor finding when out
+    of range."""
+    import nodes.content.c20_render_critic as c20
+    out = c20.run({
+        "facts_ledger": [], "page_type": "feature", "media_manifest": [],
+        "brief": {"title_direction": "AI",                                     # too short (<40)
+                  "meta_direction": "Short meta.",                              # too short (<120)
+                  "cta": "Demo"},
+        "draft": "x" * 700,                                                     # paragraph > 600
+        "outline": {"sections": [{"id": "s1", "h2": "Short"},                   # H2 too short
+                                  {"id": "s2", "h2": "ok descriptive heading about thing"}]},
+        "sections": {"answer_first": "tiny."},                                  # AIO < 200
+        "faq": [{"q": "Q?", "a": "A"},                                          # Q too short, A too short
+                {"q": "How do I track brand mentions across AI engines like ChatGPT and Gemini?",
+                 "a": "Run the prompts your buyers ask and read the responses to see where your brand appears."}],
+        "target_url": "/features/this-is-a-very-long-url-slug-that-exceeds-sixty-characters-totally",
+    })
+    descs = [f["description"] for f in out["render_report"]["failures"]]
+    assert any("title direction" in d and "< 40" in d for d in descs)
+    assert any("meta direction" in d and "< 120" in d for d in descs)
+    assert any("AIO answer block" in d for d in descs)
+    assert any("H2 's1'" in d and "< 20" in d for d in descs)
+    assert any("FAQ Q[1]" in d and "< 30" in d for d in descs)
+    assert any("FAQ A[1]" in d and "< 100" in d for d in descs)
+    assert any("longest paragraph" in d for d in descs)
+    assert any("URL slug" in d for d in descs)
+
+
+def test_c20_seo_length_clean_when_within_range():
+    """Clean inputs surface no SEO-length findings."""
+    import nodes.content.c20_render_critic as c20
+    out = c20.run({
+        "facts_ledger": [], "page_type": "feature", "media_manifest": [],
+        "brief": {"title_direction": "AI Visibility Platform for B2B SaaS Brands",
+                  "meta_direction": ("Track how ChatGPT, Gemini, Perplexity, Claude and Google AI "
+                                     "Overviews mention your brand. Generate the content AI cites."),
+                  "cta": "Book a demo"},
+        "draft": "Normal paragraph.\n\nAnother normal one.",
+        "outline": {"sections": [{"id": "problem", "h2": "Why AI search shapes B2B buyer decisions"}]},
+        "sections": {"answer_first": "x" * 280},   # AIO in [200,400]
+        "faq": [{"q": "How do I track my brand visibility across AI engines?",
+                 "a": ("Run the prompts your buyers actually ask and read the answers to see "
+                       "where you stand. Tools like Siftly automate this on a schedule.")}],
+        "target_url": "/features/ai-visibility",
+    })
+    descs = [f["description"] for f in out["render_report"]["failures"]]
+    seo_descs = [d for d in descs if any(k in d for k in
+                ("title direction", "meta direction", "H1 ", "AIO answer", "H2 '",
+                 "FAQ Q", "FAQ A", "paragraph", "URL slug", "image alt"))]
+    assert seo_descs == [], f"unexpected SEO findings: {seo_descs}"
+
+
 def test_brand_facts_seed_engine_count():
     from brand_facts import facts_from_brand
     facts = facts_from_brand(

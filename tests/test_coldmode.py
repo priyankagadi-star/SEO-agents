@@ -111,7 +111,9 @@ def test_render_critic_blocks_missing_enumerated_names():
     }
     report = run(state)["render_report"]
     assert report["verdict"] == "fail"
-    missing = report["failures"][0]["description"]
+    # named-entity finding can appear among other (advisory SEO) findings — scan for it
+    missing = next((f["description"] for f in report["failures"]
+                    if "cited but enumerated names missing" in f["description"]), "")
     assert "Perplexity" in missing and "Google AI Overviews" in missing
 
 

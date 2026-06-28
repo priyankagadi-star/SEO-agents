@@ -70,7 +70,28 @@ def md_inline(t):
     s = re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", s)                                  # bold
     s = re.sub(r"(?<!\w)\*(?=\S)(.+?)(?<=\S)\*(?!\w)", r"<em>\1</em>", s)                     # italic
     return s.replace("**", "").replace("](", "] (")   # strip any stray markers
-def blocks(t): return [b.strip() for b in re.split(r"\n\s*\n", strip_facts(t)) if b.strip()]
+_HTML_TABLE = re.compile(r"<table[\s\S]*?</table>", re.I)
+
+def blocks(t):
+    """Split body on blank lines, BUT keep a multi-line <table>...</table> as a
+    single block — otherwise the splitter would chop the table mid-tag and the
+    raw HTML would render as escaped text instead of a real table."""
+    t = strip_facts(t)
+    # Mask <table> blocks before splitting, restore after.
+    masked = []
+    def _mask(m):
+        masked.append(m.group(0))
+        return f"___TBL{len(masked) - 1}___"
+    t2 = _HTML_TABLE.sub(_mask, t)
+    out = []
+    for b in re.split(r"\n\s*\n", t2):
+        b = b.strip()
+        if not b:
+            continue
+        # restore masked tables
+        b = re.sub(r"___TBL(\d+)___", lambda m: masked[int(m.group(1))], b)
+        out.append(b)
+    return out
 
 def md_table(b):
     """Convert a GitHub-style markdown table block to a styled HTML table."""
@@ -88,6 +109,15 @@ def prose(body):
     for b in blocks(body):
         if b.lstrip().startswith("|") and (t := md_table(b)):
             out.append(t); continue
+        # raw HTML <table> (or <ul>/<ol>/<div>) the writer dropped in: pass it
+        # through verbatim. For <table>, inject the .ctab class so it inherits
+        # site styling. Anything else is rendered as-is (no double escaping).
+        bl = b.lstrip().lower()
+        if bl.startswith("<table"):
+            html = re.sub(r"<table(\s|>)", r'<table class="ctab"\1', b, count=1, flags=re.I)
+            out.append(html); continue
+        if bl.startswith(("<ul", "<ol", "<div", "<figure", "<aside", "<section")):
+            out.append(b); continue
         m = re.fullmatch(r"\*\*(.+?)\*\*", b)
         if m:
             out.append(f'<h3 class="sub">{md_inline(m.group(1))}</h3>')
