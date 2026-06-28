@@ -100,6 +100,11 @@ def classify_role(idx, total, sid, h2, body):
     """Detect a section's role by content, not just id — outlines may use
     semantic ids (answer_first/proof/cta) OR generic ones (s1..s8)."""
     s, h, b = _n(sid), _n(h2), body or ""
+    # tool_widget / value_prop are UI placeholder slots on free-tool / landing
+    # page-types. The writer sometimes fills them with mock HTML; we render a
+    # clean tool-widget skeleton instead and ignore the model output.
+    if s in ("tool_widget", "widget", "value_prop", "tool"):
+        return "tool_widget"
     if s == "faq" or "frequently asked" in h or h.strip() in ("faq", "faqs") or b.count("### ") >= 2:
         return "faq"
     if s == "proof" or "real results" in h or "results from real" in h or re.search(r'(^|\n)\s*>\s*"', b):
@@ -178,6 +183,25 @@ for idx, s in enumerate(outline):
 body_html = "\n".join(body_html)
 
 # trend band
+# Tool-widget placeholder: clean dev-team slot for the interactive UI.
+# Only emitted when the outline declares a tool_widget role (free-tool page-type).
+tool_widget_html = ""
+if any(r == "tool_widget" for r in roles.values()):
+    seed = (inp.get("seed_keyword") or "").lower().replace(" ", "-") or "tool"
+    tool_widget_html = (
+        f'<section class="tool-widget-band"><div class="wrap" style="max-width:780px">'
+        f'<div id="tool-widget" data-tool="{esc(seed)}" '
+        f'data-target-url="{esc(rd.get("target_url",""))}" '
+        f'aria-label="Tool widget — replace with real interactive UI">'
+        f'<div class="tool-widget-placeholder">'
+        f'<div class="twp-form"><label class="twp-label" for="tw-url">'
+        f'Enter your URL to {esc(inp.get("seed_keyword","check"))}</label>'
+        f'<div class="twp-row"><input id="tw-url" class="twp-input" type="url" '
+        f'placeholder="https://example.com" autocomplete="off">'
+        f'<button class="btn btn-primary twp-btn" type="button">Check</button></div>'
+        f'<p class="twp-note">Interactive tool — plug your real widget into this slot. '
+        f'No signup required.</p></div></div></div></div></section>')
+
 trends_html = ""
 if TRENDS:
     cards = "".join(f'<div class="trend"><span class="trend-icon">↗</span><p>{esc(t)}</p></div>' for t in TRENDS)
@@ -253,6 +277,14 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 {jsonld}
 </script>{CSS}
 <style>.sub{{font-size:18px;margin:24px 0 8px}}.sources{{max-width:760px;margin:0 auto;padding-left:20px;line-height:2}}
+.tool-widget-band{{padding:0 0 60px 0;background:linear-gradient(180deg,#ffffff 0%,var(--soft) 100%)}}
+.tool-widget-placeholder{{background:#fff;border:2px solid var(--accent);border-radius:18px;padding:32px;box-shadow:0 14px 40px rgba(91,107,255,.10)}}
+.twp-label{{display:block;font-weight:600;color:var(--ink);font-size:15px;margin-bottom:10px}}
+.twp-row{{display:flex;gap:10px}}
+.twp-input{{flex:1;padding:14px 16px;font-size:15px;border:1px solid var(--line);border-radius:10px;outline:none}}
+.twp-input:focus{{border-color:var(--accent);box-shadow:0 0 0 3px rgba(91,107,255,.15)}}
+.twp-btn{{padding:14px 22px;white-space:nowrap}}
+.twp-note{{margin:12px 0 0 0;font-size:13px;color:var(--muted)}}
 .ctab{{width:100%;border-collapse:collapse;margin:16px 0;font-size:14px;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}}
 .ctab th{{background:var(--ink);color:#fff;text-align:left;padding:11px 13px;font-size:12.5px}}
 .ctab td{{padding:11px 13px;border-top:1px solid var(--line);color:var(--ink2);vertical-align:top}}
@@ -286,6 +318,7 @@ page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <div class="stat"><div class="num">3.5×</div><div class="lbl">KIWABI ChatGPT revenue</div></div>
 <div class="stat"><div class="num">End-to-end</div><div class="lbl">Track → create → measure</div></div></div></section>
 
+{tool_widget_html}
 {trends_html}
 {body_html}
 {links_html}
